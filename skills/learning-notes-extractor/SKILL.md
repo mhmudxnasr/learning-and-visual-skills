@@ -1,11 +1,11 @@
 ---
 name: learning-notes-extractor
-description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, and includes a `📝 My Notes & Reaction` block for `taste-mapper`. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
+description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, links `[[Note Title]]` in `Taste Map/Map.canvas`, and includes a `📝 My Notes & Reaction` block for `taste-mapper`. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
 ---
 
 # Learning Notes Extractor
 
-This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, and provides a `📝 My Notes & Reaction` field for the `taste-mapper` skill to read.
+This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, links `[[Note Title]]` in `Taste Map/Map.canvas`, and provides a `📝 My Notes & Reaction` field for the `taste-mapper` skill to read.
 
 ## Core Workflow
 
@@ -31,11 +31,15 @@ This skill extracts text and handwritten annotations from a PDF or HTML document
      - `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/<Category>/<Branch>/<Leaf>/[Document Title].md`
      - `/home/mahmud/completed/[Document Title].md`
 
-6. **Recommendations Auto-Sync (`Recommendations  — Mahmood.md`):**
+6. **Canvas Node Linking (`Map.canvas`):**
+   - Locate the matching node ID in `/home/mahmud/Documents/Obsidian Vault/Taste Map/Map.canvas`.
+   - Append ` — [[Document Title]]` to the node's `"text"` field in `Map.canvas` if not already linked.
+
+7. **Recommendations Auto-Sync (`Recommendations  — Mahmood.md`):**
    - If the note comes from a primary research piece (book, paper, podcast, lecture), check `/home/mahmud/Documents/Obsidian Vault/Taste Map/Recommendations  — Mahmood.md`.
    - Append or update the entry under `Active leaves` following `Schema.md` (video_title, creator, video_url, why_this, verified, status=active, user_rating=unset, dedup_key).
 
-7. **Update Central Table of Contents (`00 - Table of Contents.md`):**
+8. **Update Central Table of Contents (`00 - Table of Contents.md`):**
    - Append an entry for the newly processed note to `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/00 - Table of Contents.md`.
    - Format:
      ```markdown
