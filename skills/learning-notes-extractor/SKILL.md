@@ -1,11 +1,11 @@
 ---
 name: learning-notes-extractor
-description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, maintains bi-directional `_index.md` folder maps, appends `## Related` backlinks, and includes a `📝 My Notes & Reaction` block for `taste-mapper`. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
+description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, and includes a `📝 My Notes & Reaction` block for `taste-mapper`. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
 ---
 
 # Learning Notes Extractor
 
-This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, maintains bi-directional `_index.md` maps, appends `## Related` backlinks, and provides a `📝 My Notes & Reaction` field for the `taste-mapper` skill to read.
+This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, and provides a `📝 My Notes & Reaction` field for the `taste-mapper` skill to read.
 
 ## Core Workflow
 
@@ -15,7 +15,7 @@ This skill extracts text and handwritten annotations from a PDF or HTML document
 
 2. **Identify Context & Topic Mapping:**
    - Check `Taste Map/Map.canvas` or `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/` to find the exact `<Category>/<Branch>/<Leaf>` node matching the document's topic.
-   - **Dynamic Folder Sync:** Create missing category/branch/leaf folders, `_index.md` files, and `z - 📎 Attachments` directories when a note is placed.
+   - Create missing category/branch/leaf folders on demand when saving notes.
 
 3. **Attachment Handling:**
    - Copy the source file (HTML, PDF, image) into:
@@ -26,23 +26,16 @@ This skill extracts text and handwritten annotations from a PDF or HTML document
    - Place a `📝 My Notes & Reaction` callout block directly under the title `# [Document Title]` so `taste-mapper` can parse user feedback.
    - Merge academic English text with expressive Egyptian Arabic slang interpretations, weaving handwritten insights natively into the Arabic summaries.
 
-5. **Cross-Note Backlinks (`## Related`):**
-   - Scan existing notes in `07 - 🎓 Learning/` and `02 - 🧠 Knowledge/` for overlapping themes.
-   - Append a `## Related` section at the end of the note (above the attachment line) with 2-4 context-rich `[[WikiLinks]]`.
-
-6. **Save Note to Vault & Completed Folder:**
+5. **Save Note to Vault & Completed Folder:**
    - Save the markdown note to:
      - `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/<Category>/<Branch>/<Leaf>/[Document Title].md`
      - `/home/mahmud/completed/[Document Title].md`
 
-7. **Bi-directional Indexing (`_index.md`):**
-   - Update `_index.md` in the target leaf, branch, and category folders to list clickable links (`- [[Document Title]]`) to all notes in that subtree.
-
-8. **Recommendations Auto-Sync (`Recommendations  — Mahmood.md`):**
+6. **Recommendations Auto-Sync (`Recommendations  — Mahmood.md`):**
    - If the note comes from a primary research piece (book, paper, podcast, lecture), check `/home/mahmud/Documents/Obsidian Vault/Taste Map/Recommendations  — Mahmood.md`.
    - Append or update the entry under `Active leaves` following `Schema.md` (video_title, creator, video_url, why_this, verified, status=active, user_rating=unset, dedup_key).
 
-9. **Update Central Table of Contents (`00 - Table of Contents.md`):**
+7. **Update Central Table of Contents (`00 - Table of Contents.md`):**
    - Append an entry for the newly processed note to `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/00 - Table of Contents.md`.
    - Format:
      ```markdown
@@ -107,10 +100,6 @@ Follow this structure exactly:
 
 > [!TIP] الخلاصة وطريقة الحماية
 > *[Egyptian Arabic final advice on how to defend against this vulnerability. Heavily incorporate the user's handwritten "takeaways" or "My Take" sections here.]*
-
-## Related
-- [[Related Note 1]] — short context
-- [[Related Note 2]] — short context
 
 ----
 	![[Source_Filename.html]]
