@@ -1,11 +1,11 @@
 ---
 name: learning-notes-extractor
-description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, links `[[Note Title]]` in `Taste Map/Map.canvas`, and updates bi-directional `_index.md` folder maps and `## Related` backlinks. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
+description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, links `[[Note Title]]` in `Taste Map/Map.canvas`, maintains bi-directional `_index.md` folder maps, appends `## Related` backlinks, and includes a `📝 My Notes & Reaction` block for `taste-mapper`. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
 ---
 
 # Learning Notes Extractor
 
-This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, links canvas nodes, maintains bi-directional `_index.md` maps, and appends `## Related` backlinks.
+This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, links canvas nodes, maintains bi-directional `_index.md` maps, appends `## Related` backlinks, and provides a `📝 My Notes & Reaction` field for the `taste-mapper` skill to read.
 
 ## Core Workflow
 
@@ -24,7 +24,9 @@ This skill extracts text and handwritten annotations from a PDF or HTML document
      1. `/home/mahmud/Documents/Obsidian Vault/z - 📎 Attachments/[Source_Filename]`
      2. `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/z - 📎 Attachments/<Category>/<Branch>/<Leaf>/[Source_Filename]`
 
-4. **Format the Summary:** Merge academic English text with expressive Egyptian Arabic slang interpretations, weaving handwritten insights natively into the Arabic summaries.
+4. **Format the Summary & Reaction Block:**
+   - Place a `📝 My Notes & Reaction` callout block directly under the title `# [Document Title]` so `taste-mapper` can parse user feedback.
+   - Merge academic English text with expressive Egyptian Arabic slang interpretations, weaving handwritten insights natively into the Arabic summaries.
 
 5. **Cross-Note Backlinks (`## Related`):**
    - Scan existing notes in `07 - 🎓 Learning/` and `02 - 🧠 Knowledge/` for overlapping themes.
@@ -68,6 +70,9 @@ Follow this structure exactly:
 
 ```markdown
 # [Chapter/Document Title]
+
+> [!NOTE] 📝 My Notes & Reaction
+> *[Write your thoughts, reaction (loved/hated/mid), or personal takeaways here. The taste-mapper skill in Hermes reads this section to update your Taste Map profile.]*
 
 #### THE FOUNDATION
 
