@@ -1,114 +1,108 @@
 ---
 name: learning-notes-extractor
-description: Extracts text and handwritten annotations from any PDF, HTML, or study guide, compiles them into an Influence-style markdown note (bilingual English/Egyptian Arabic slang), automatically routes the note into its exact Taste Map category path under `07 - 🎓 Learning`, embeds source attachments in `z - 📎 Attachments`, updates `00 - Table of Contents.md`, syncs `Taste Map/Recommendations  — Mahmood.md`, and includes a `📝 My Notes & Reaction` block for `taste-mapper`. Trigger whenever asked to "make notes", "extract notes", "take notes", process a study guide/HTML/PDF, or via `/learning-notes-extractor`.
+description: Use when extracting study notes/ink.
 ---
 
 # Learning Notes Extractor
 
-This skill extracts text and handwritten annotations from a PDF or HTML document and formats them into an Obsidian-ready markdown file. It automatically resolves the topic against `Taste Map/Map.canvas`, places the note and its source attachments into the correct folder path in `07 - 🎓 Learning`, updates the central Table of Contents (`00 - Table of Contents.md`), syncs recommendations, and provides a `📝 My Notes & Reaction` field for the `taste-mapper` skill to read.
+Explicit bilingual links, named note versions, source-edition continuity and reader-highlight reconciliation use the site operator's [learning-work contract](../workflow/learning-compass-site-operator/references/learning-work.md). Links are optional exact selections, not mandatory scope paperwork. Native `compass_pdf_evidence` retains annotation IDs and modification dates for previewed import; ink and OCR never become verified handwriting through that importer. Highlight acceptance creates a source annotation only. Note extraction, learner-authored Units/cards and companion publication remain separate explicit workflows. A named-note restore preserves current text and canonical ownership; never reconstruct deleted notes through this path.
 
-## Core Workflow
+Preserve precise English claims, quotations, and verbatim handwriting; do not add a separate prose audit.
 
-1. **Scan the Document & OCR Fallback:**
-   - Read the file (PDF or HTML) using `view_file`. Pay close attention to text, quotes, and handwritten annotations.
-   - **OCR Fallback:** If handwritten margin notes or scanned PDF pages are low-contrast or illegible with `view_file`, trigger `ocr-and-documents` (PyMuPDF / Tesseract) to extract precise text overlays.
+## Specialist receipt
 
-2. **Identify Context & Topic Mapping:**
-   - Check `Taste Map/Map.canvas` or `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/` to find the exact `<Category>/<Branch>/<Leaf>` node matching the document's topic.
-   - Create missing category/branch/leaf folders on demand when saving notes.
+Keep `intent → target → before → mutation/job → after → evidence → blocker` in the existing operation receipt for every run. Reply naturally with the verified result and any blocker. Use `not_present` or `not_applicable` when the source does not support a section; never invent content to satisfy the schema.
 
-3. **Attachment Handling:**
-   - Copy the source file (HTML, PDF, image) into:
-     1. `/home/mahmud/Documents/Obsidian Vault/z - 📎 Attachments/[Source_Filename]`
-     2. `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/z - 📎 Attachments/<Category>/<Branch>/<Leaf>/[Source_Filename]`
+## Site control
 
-4. **Format the Summary & Reaction Block:**
-   - Place a `📝 My Notes & Reaction` callout block directly under the title `# [Document Title]` so `taste-mapper` can parse user feedback.
-   - Merge academic English text with expressive Egyptian Arabic slang interpretations, weaving handwritten insights natively into the Arabic summaries.
+Discover note, artifact, session, and job operations from `/agent/capabilities`; execute JSON operations through `/agent/request` with `x-agent-name: learning-notes-extractor`. Keep D1-first ordering, idempotent extraction, no automated recall generation, and HTML-only Lite Visual processing. Binary artifact uploads use canonical multipart `/artifacts` directly.
 
-5. **Save Note to Vault & Completed Folder:**
-   - Save the markdown note to:
-     - `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/<Category>/<Branch>/<Leaf>/[Document Title].md`
-     - `/home/mahmud/completed/[Document Title].md`
+Create durable learning notes for Learning Compass only after `learning-compass-operating-system` routes an explicit extraction/reprocess request or leases an `extract_notes` job. D1 is canonical; Obsidian is an archive copy only for non-book sources.
 
-6. **Recommendations Auto-Sync (`Recommendations  — Mahmood.md`):**
-   - If the note comes from a primary research piece (book, paper, podcast, lecture), check `/home/mahmud/Documents/Obsidian Vault/Taste Map/Recommendations  — Mahmood.md`.
-   - Append or update the entry under `Active leaves` following `Schema.md` (video_title, creator, video_url, why_this, verified, status=active, user_rating=unset, dedup_key).
+## Inputs
 
-7. **Update Central Table of Contents (`00 - Table of Contents.md`):**
-   - Append an entry for the newly processed note to `/home/mahmud/Documents/Obsidian Vault/07 - 🎓 Learning/00 - Table of Contents.md`.
-   - Format:
-     ```markdown
-     ### <Category> / <Branch> / <Leaf>
+- PDF, including stylus-annotated pages
+- HTML or web artifact
+- Video or podcast transcript
+- Direct text
+- Hermes `extract_notes` job with `recommendation_id`, `artifact_id`, `r2_key`, or source URL
+- Lite Visual HTML artifact with `pair_id`, `artifact_role=html`, and an HTML+PDF companion
 
-     #### [[Document Title]]
-     > **Summary:** [Concise 2-3 sentence summary of the core thesis, empirical studies, and takeaways].
-     > **Path:** `07 - 🎓 Learning/<Category>/<Branch>/<Leaf>/[Document Title].md`
-     > **Attachment:** `![[Source_Filename]]`
+## Job workflow
 
-     ---
-     ```
+For a leased extraction/reprocess job, read [job completion and payloads](references/jobs.md) before claiming or submitting it. Preserve source/target binding, handwriting separation, anchored Units, idempotent D1 completion, and failure receipts. Process Lite Visual HTML once; its PDF is not a second source. Never create recall drafts or cards.
 
-## Formatting Rules & Template
+## Note shape
 
-**Strict Rule:** DO NOT USE YAML FRONTMATTER. The file must start directly with an H1 heading.
+Default to a simple, scan-friendly retrieval note, not a replay of the HTML. Preserve all distinct hadith and Qur'anic quotations verbatim, add a very short Egyptian-Arabic explanation per quotation, and retain only the essential remaining takeaways; the existing HTML remains the detailed reference. For Arabic religious sources use Arabic only unless requested otherwise. This explicit concise-note preference overrides the longer editorial/bilingual defaults below; never pad the note or start a completeness-gated job solely to satisfy length ratios. Hadith authentication remains opt-in as specified below.
 
-Follow this structure exactly:
+Do not force every source into a five-part template. The default output is one coherent source note with a single primary `body` section containing the complete, readable extraction in source order. Use additional sections only when they materially improve navigation for a long or genuinely multi-part source; never create sections just to satisfy a schema.
 
-```markdown
-# [Chapter/Document Title]
+Do not manufacture `reaction`, `foundation`, `case_studies`, `exploitation`, or `defense` sections. If the source does not contain a distinct idea, example, vulnerability, or defense, omit that structure instead of writing `not_present`, filler, or generic summary prose. Preserve the source's real hierarchy when it has one, but do not impose an Influence-style outline on unrelated material.
 
-> [!NOTE] 📝 My Notes & Reaction
-> *[Write your thoughts, reaction (loved/hated/mid), or personal takeaways here. The taste-mapper skill in Hermes reads this section to update your Taste Map profile.]*
+The note should read like a finished editorial article: a precise title, a short orienting opening when supported, a complete evidence-grounded body, useful headings only where the source earns them, and a concise closing synthesis only when supported by the source. Do not split one idea across artificial cards or repeat the thesis in every section. Keep exact numbers, qualifications, anchors, and uncertainty.
 
-#### THE FOUNDATION
+Write bilingual source notes: preserve precise English source claims, terminology, names, numbers, and study details, then add a concise natural Egyptian-Arabic explanation of each major idea. Keep technical terms in English when translation would reduce precision. Generated Egyptian interpretation explains the source but is never Mahmood's reflection or personal evidence. Preserve source-original Arabic quotations exactly with their anchors and `rtl` direction.
 
-> [!NOTE] [Core Concept Title]
-> "[Quote from the text or core definition]"
+When the source supports them, include these explicit parts inside the coherent note body:
 
-*[Egyptian Arabic slang summary of the foundation. Integrate relevant handwritten notes here, keeping them natural and punchy.]*
+- **Misconception vs. Truth:** pair each consequential common belief or delusion with the source-supported psychological or scientific reality. Never invent a misconception merely to fill the outline.
+- **Case Studies & Experiments:** include every key study or experiment in the source, preserving researchers, year, methodology, sample or conditions, exact findings, qualifications, and limitations when available. State `not specified in the source` rather than guessing a missing researcher or year.
 
----
+Use Learning Compass-native Markdown only: headings, paragraphs, lists, and ordinary blockquotes. Do not emit YAML frontmatter, Obsidian `[!NOTE]` callouts, wiki links, embeds, `==highlight==` markers, or attachment syntax.
 
-#### KEY CASE STUDIES
+## Writing rules
 
-**[Study Name]:** 
-[Brief English summary of the study methodology and statistical results, e.g., ==$5,000==].
+- Apply the four-year retrieval test: someone reopening only this note years later should recover the source's most useful mechanisms, decision rules, strongest evidence, boundaries, and practical implications in the shortest form that remains informative.
+- Optimize for durable retrieval, not chapter replay. Remove repetition, scene-setting, decorative anecdotes, and low-value detail; keep an example only when it explains a mechanism, establishes evidence, marks a boundary, or makes the idea memorable.
+- Lead each major idea with the concise Egyptian-Arabic explanation Mahmood can absorb fastest, while retaining the exact English term, claim, study identity, number, or qualification needed for precision.
+- Write source-proportional, high-density prose: start with the governing claim or mechanism, preserve exact anchors and qualifications, define necessary terms inline, and separate source evidence from interpretation and uncertainty. Do not force SCQA, evidence tables, or a fixed template when the source does not support them.
+- Use precise English for source claims and evidence, paired with approachable Egyptian Arabic for explanation and interpretation. Keep each block in one language so the Scholar reader can place LTR and RTL content in the correct columns.
+- Preserve exact numbers and qualifications; do not invent studies, quotes, citations, or handwriting.
+- Link claims to the source recommendation and page/time anchor when available.
+- For a Lite Visual derivative, distinguish original-source claims from editorial explanation added by the canonical HTML. Native tables, equations, and rare inline SVG are explanatory structure, never independent source evidence or personal thoughts. Anchor factual claims to the original source extraction and its page/timestamp/spine locators.
+- Focus on why the idea matters, how it works, and what the source actually demonstrates. Cover failure modes, exploitation, or defenses only when the source supports them; never invent an applied angle to complete a template.
+- Avoid generic summaries, repeated filler, and decorative prose.
 
-*[Egyptian Arabic slang explanation of the study's implications. Weave in the handwritten notes corresponding to this study.]*
+Use an Influence-style structure only when the source itself supports it. Never force `THE FOUNDATION`, `KEY CASE STUDIES`, `HOW IT'S EXPLOITED`, or `DEFENSE & HOW TO SAY NO` onto unrelated material. Preserve useful source wording and terminology without turning it into decorative headings.
 
-**[Another Study Name]:** 
-[Brief English summary...]
+## Qur'an and hadith rule
 
-*[Egyptian Arabic slang explanation...]*
+When the source contains Qur'an or hadith, read [quotation preservation](references/religious-quotations.md). Preserve every distinct quotation and its source wording; verify Qur'anic wording and location. Hadith authentication and fresh lookup require an explicit request.
 
----
+## Payloads and note replacement
 
-#### HOW IT'S EXPLOITED: VULNERABILITIES OF THE RULE
+Read [job completion and payloads](references/jobs.md) for `source_note_v2` submission or an explicit multi-lesson note merge. A merge saves and verifies the complete replacement before deleting only explicitly authorized old notes. Preserve personal reflections, source anchors and lesson progress.
 
-> [!WARNING] [Vulnerability/Tactic Name]
-> [Brief English description of how the concept is weaponized or how humans fail to control it.]
+## Learning Units
 
-*[Egyptian Arabic breakdown of the trick or vulnerability, using terms from the user's handwriting if available.]*
+- Keep 1–16 source-worthy Units; every Unit has a stable ID and at least one exact source anchor.
+- Never generate a flash card or recall draft from a Unit. Manual card creation is a separate learner action.
 
----
+## Obsidian archive
 
-#### DEFENSE & HOW TO SAY NO - ازاي تحمي نفسك
+This routine archive applies only to non-book sources. A separate explicit Thread download for Obsidian may include book and chapter notes, as Mahmood authorized on 2026-09-05. That download packages existing canonical notes and separate handwriting reflections; it does not authorize automatic book archiving during extraction or any Obsidian-to-D1 writeback. Continue transcribing handwritten annotations faithfully with page anchors and uncertain words.
 
-**1. [Strategy 1]:** [Brief English explanation].
-**2. [Strategy 2]:** [Brief English explanation].
+Archive path:
 
-> [!TIP] الخلاصة وطريقة الحماية
-> *[Egyptian Arabic final advice on how to defend against this vulnerability. Heavily incorporate the user's handwritten "takeaways" or "My Take" sections here.]*
-
-----
-	![[Source_Filename.html]]
+```text
+~/Documents/Obsidian Vault/07 - 🎓 Learning/<Category>/<Branch>/<Leaf>/<Title>.md
 ```
 
-## Tone & Integration of Handwriting
+The archive may embed a copied source from `z - 📎 Attachments`, but it is never read as canonical product state and never drives bidirectional sync.
 
-- **Egyptian Slang:** Use words like "من الآخر", "عشان", "بضان", "اشتغالة", "سالكة", "بيكرف".
-- **Handwriting Priority:** The user's handwritten notes are the MOST IMPORTANT part of the summary. If the user wrote an insight, this perspective MUST drive the Arabic commentary for that section.
-- **Italics:** All Arabic commentary must be enclosed in italics `*...*`.
-- **Bilingual Mixing:** It's okay to mix English words into the Arabic text exactly as the user did in their handwriting (e.g., `(100% agree)`).
-- **Attachment Link:** Always end the file with `----` followed by `\t![[Source_Filename]]` so Obsidian embeds and links the source document seamlessly.
+## Connected skills
+
+- `lite-visual` creates and uploads the pair but never calls extraction automatically. This skill processes its HTML only after a separate explicit extraction/reprocess request.
+- `recommendations-worker-ops` owns the API and deployment contract.
+- `taste-mapper` processes the user's preserved reflection and every rating into reviewable proposals. It never rewrites the reflection; only evidence-qualified profile/map/scoring proposals may apply automatically.
+- `taste-rec` is never invoked by extraction or feedback.
+
+## NotebookLM corpus boundary
+
+The NotebookLM Master Corpus is updated by Hermes during explicit recommendation-feedback handling, not by every extraction or D1 mutation. Source-note English interpretations generated by this skill are not Mahmood's thoughts and must not be uploaded as personal reflections. Only the original source material and clearly marked Mahmood-authored reflection/handwriting/feedback may be used as his personal evidence. Lite Visual HTML/PDF output is never the NotebookLM source; use the original source URL and clean raw extraction.
+
+
+## Compatibility boundary
+
+Use only capabilities returned by the live registry. New work uses `output_contract=source_note_v2`, source-note dossier reads, and anchored Units without generated recall. Accept `learning_units_v1` only for an already-leased legacy job; never create new v1 work or call an unregistered compatibility endpoint.

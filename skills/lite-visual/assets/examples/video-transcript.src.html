@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="نموذج بنية لفيديو أو محاضرة: خط زمني بمراجع وقت، مثال محلول، ومصطلحات.">
+<title>محاضرة مسجلة — نموذج بنية</title>
+<style>/*@kit*/</style>
+</head>
+<body><main><article data-canonical-content="true">
+
+<section class="unit" id="opening">
+  <small class="eyebrow">محاضرة مسجلة · نموذج بنية لمصدر منطوق</small>
+  <h1>إزاي تحسب فايدة الاستثمار المركّب؟</h1>
+  <p class="lead">المحاضر بيمشي في ثلاث خطوات: يوضح الفكرة بمثال بسيط، يحسبها رقميًا، وبعدين يقول أين تخدعنا الحدس. الترتيب هنا هو ترتيب الكلام نفسه.</p>
+  <ol class="timeline">
+    <li><span class="when">00:00 – 04:10</span><strong>الفكرة</strong>الفايدة بتتحسب على الأصل وعلى الفايدة السابقة.</li>
+    <li><span class="when">04:10 – 11:40</span><strong>المثال المحلول</strong>١٠٬٠٠٠ جنيه بمعدل ٨٪ لمدة ثلاث سنين.</li>
+    <li><span class="when">11:40 – 17:30</span><strong>أين يخطئ الحدس</strong>الناس بتقدّر النمو على مدى طويل بأقل من حقيقته.</li>
+  </ol>
+  <small class="source">المصدر: محاضرة تجريبية لعرض البنية فقط. أرقام المثال توضيحية. المراجع الزمنية بصيغة <span class="ref">mm:ss</span>.</small>
+</section>
+
+<section class="unit" id="worked">
+  <header class="unit-head"><h2>المثال خطوة خطوة</h2></header>
+  <p>المحاضر بيبدأ من الرقم ويطلّع القاعدة بعد كده، مش العكس. <span class="ref">05:20</span></p>
+  <table>
+    <caption>١٠٬٠٠٠ جنيه بمعدل ٨٪ سنويًا</caption>
+    <thead><tr><th>السنة</th><th class="num">الرصيد أول السنة</th><th class="num">الفايدة</th><th class="num">الرصيد آخر السنة</th></tr></thead>
+    <tbody>
+      <tr><th>١</th><td class="num">10,000</td><td class="num">800</td><td class="num">10,800</td></tr>
+      <tr><th>٢</th><td class="num">10,800</td><td class="num">864</td><td class="num">11,664</td></tr>
+      <tr><th>٣</th><td class="num">11,664</td><td class="num">933</td><td class="num">12,597</td></tr>
+    </tbody>
+  </table>
+  <div class="def"><b>القاعدة</b><p dir="ltr" style="text-align:left"><bdi>A = P × (1 + r)<sup>n</sup></bdi></p><p><bdi>P</bdi> الأصل، <bdi>r</bdi> المعدل السنوي، <bdi>n</bdi> عدد السنين.</p></div>
+  <div class="example"><b>مثال من عندنا</b><p>لو المعدل ٨٪ والمدة ٣٠ سنة، نفس القاعدة بتديك حوالي ١٠ أضعاف الأصل، مش ٣٤٠٪ زي ما الحدس بيقول.</p></div>
+</section>
+
+<section class="unit" id="intuition">
+  <header class="unit-head"><h2>لما الحدس يخدعنا</h2></header>
+  <div class="compare">
+    <div><h3>الحدس الخطي</h3><p>٣٠ سنة × ٨٪ = ٢٤٠٪ زيادة.</p></div>
+    <div><h3>الحساب المركّب</h3><p>النمو بيتسارع لأن كل سنة بتبدأ من رصيد أكبر. <span class="ref">14:05</span></p></div>
+  </div>
+  <div class="takeaway"><h2>ما يخرج به المشاهد</h2><ol><li>الفايدة على الفايدة هي مصدر التسارع.</li><li>القاعدة بسيطة، لكن الأُسّ هو اللي بيخدعنا.</li></ol></div>
+</section>
+
+</article></main></body>
+</html>

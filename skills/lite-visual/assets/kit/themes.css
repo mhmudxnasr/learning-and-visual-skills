@@ -1,0 +1,34 @@
+/* Theme tokens: set <html data-theme="NAME">. Default (no attribute) = scholar. Choose from the source's tone, then retune if needed. */
+:root[data-theme=technical]{--paper:#f7f9fb;--canvas:#e6eaee;--ink:#0d1a2b;--muted:#4a5768;--line:#cfd6de;--quiet:#eef2f6;
+  --accent:#0a6a94;--accent-soft:#dcedf5;--alert:#c8420c;--alert-soft:#fae5da;--gold:#7d6200;--gold-soft:#f2ecd0}
+:root[data-theme=technical] h1,:root[data-theme=technical] h2{letter-spacing:0;font-weight:700}
+:root[data-theme=technical] .unit:first-child{border-top-width:6px}
+:root[data-theme=technical] .flow li,:root[data-theme=technical] .note,:root[data-theme=technical] .warn,:root[data-theme=technical] .def,:root[data-theme=technical] .example{border-radius:0}
+
+:root[data-theme=copper]{--paper:#faf3e8;--canvas:#e9e1d3;--ink:#2b1c14;--muted:#5b4a3f;--line:#dccfba;--quiet:#f3e9d8;
+  --accent:#8a4726;--accent-soft:#f1dfd0;--alert:#1b6b66;--alert-soft:#d9ecea;--gold:#946b12;--gold-soft:#f2e6c4}
+:root[data-theme=copper] h1,:root[data-theme=copper] h2{font-family:var(--naskh);font-weight:700}
+:root[data-theme=copper] blockquote{border-inline-start-color:var(--alert)}
+
+:root[data-theme=data]{--paper:#f8fafb;--canvas:#e5eaed;--ink:#1a2630;--muted:#4d5b66;--line:#d0d9de;--quiet:#eef3f5;
+  --accent:#2a6b5a;--accent-soft:#dcede8;--alert:#bd3f0c;--alert-soft:#f8e2d8;--gold:#76590a;--gold-soft:#f1ead0}
+:root[data-theme=data] .stat strong{font-size:56px}
+:root[data-theme=data] .bar .track{height:26px}
+
+:root[data-theme=devotional]{--paper:#fbf9f1;--canvas:#e7e6dc;--ink:#1c2925;--muted:#4e5c56;--line:#d5d6c8;--quiet:#f0f0e4;
+  --accent:#1d6249;--accent-soft:#dbeadf;--alert:#8f3a28;--alert-soft:#f3e0da;--gold:#8d6a14;--gold-soft:#f2e8c7}
+:root[data-theme=devotional] h1,:root[data-theme=devotional] h2,:root[data-theme=devotional] .thesis{font-family:var(--naskh);font-weight:700}
+:root[data-theme=devotional] blockquote{font-size:32px;line-height:2.1;border-inline-start:0;text-align:center;padding-inline:20px;border-block:2px solid var(--gold)}
+:root[data-theme=devotional] blockquote cite{text-align:center}
+
+/* Opening compositions: add to the first <section class="unit"> */
+.open-question h1{font-size:64px;line-height:1.3;text-wrap:balance;margin:12px 0 var(--s3)}
+.open-question h1::after{content:"";display:block;width:96px;height:8px;background:var(--alert);margin-top:22px}
+.open-quote>blockquote:first-of-type{font-size:36px;line-height:1.9;border-inline-start:0;padding-inline:0;margin:6px 0 var(--s3)}
+.open-quote>blockquote:first-of-type::before{content:"«";display:block;font:700 96px/0.6 var(--naskh);color:var(--alert);margin-bottom:8px}
+.open-quote h1{font-size:34px}
+.open-split .compare{border-block-width:5px;margin-top:6px}
+.open-split .compare h3{font-size:22px;letter-spacing:0}
+.open-split h1{font-size:44px}
+@media print{.open-question h1{font-size:40pt}.open-quote>blockquote:first-of-type{font-size:24pt}.open-quote h1{font-size:22pt}.open-split h1{font-size:30pt}:root[data-theme=devotional] blockquote{font-size:21pt}}
+@media(max-width:700px){.open-question h1{font-size:44px}.open-quote>blockquote:first-of-type{font-size:28px}.open-split h1{font-size:34px}}

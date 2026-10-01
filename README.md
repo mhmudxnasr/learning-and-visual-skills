@@ -1,6 +1,6 @@
 # Learning & Visual Agent Skills
 
-Custom agent skills for Obsidian vault learning workflows and interactive visual HTML artifact generation.
+Custom agent skills for Learning Compass notes and source-faithful reading companions.
 
 ## Included Skills
 
@@ -10,9 +10,9 @@ Custom agent skills for Obsidian vault learning workflows and interactive visual
 - **Triggers:** `"make notes"`, `"take notes"`, `"extract notes"`, `/learning-notes-extractor`.
 
 ### 2. `lite-visual`
-- **Description:** Transforms dense articles, papers, or reports into single-file, offline-first interactive HTML comprehension engines.
-- **Features:** Pedagogical reordering by prerequisite, interactive visual widgets, plain-language B2 English with clickable glossary, zero AI design tells, offline system font fallbacks.
-- **Triggers:** When `"visual"` and `"lite"` are said together.
+- **Description:** Turns a source into one complete Arabic reading companion rendered as a linked HTML/PDF pair; books use one pair per chapter.
+- **Features:** Source-faithful explanation, concept-fit visuals, two to four Arabic retrieval/self-explanation pauses, answer-before-feedback HTML, matching PDF writing space with later answers, and deterministic source/render validation. It does not create scores, streaks, XP, or a second mastery system.
+- **Triggers:** Explicit requests for Lite Visual or a source-based HTML/PDF reading companion.
 
 ## Installation
 
