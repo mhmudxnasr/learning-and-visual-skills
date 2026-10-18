@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Atomically publish one validated Lite Visual HTML/PDF pair.
+"""Atomically publish one sealed HTML-only Lite Visual companion.
 
-Both files travel in one request. The Worker verifies the validator receipt,
-stores both objects, commits both D1 records together, and exposes neither file
-when any part fails. Repeating the same pair and hashes safely reuses it.
+The Worker verifies the signed receipt, stores the HTML object, commits its D1
+records together, and exposes nothing when any part fails. Repeating the same
+companion and hashes safely reuses it.
 """
 
 from __future__ import annotations
@@ -23,10 +23,11 @@ from typing import Any
 
 DEFAULT_WORKER = "https://recommendations-worker.mhmudnasr30.workers.dev"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from receipt_attestation import RECEIPT_SCHEMA, WORKFLOW_CONTRACT
-from pair_integrity import INTEGRITY_SCHEMA, receipt_valid as receipt_attestation_valid
+from seal import INTEGRITY_SCHEMA, WORKFLOW_CONTRACT, receipt_valid as receipt_attestation_valid
 PAIR_RE = re.compile(r"^lv-[A-Za-z0-9._-]+$")
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+# The Worker derives pair IDs from these fields; an HTML-only receipt has no
+# pdf_sha256, which contributes an empty line exactly as the Worker computes it.
 PAIR_HASH_FIELDS = (
     "source_sha256",
     "source_scope_sha256",
@@ -34,6 +35,7 @@ PAIR_HASH_FIELDS = (
     "html_sha256",
     "pdf_sha256",
 )
+CONTENT_HASH_FIELDS = PAIR_HASH_FIELDS[:-1]
 
 
 class UploadError(RuntimeError):
@@ -51,7 +53,7 @@ def file_hash(path: Path) -> str:
 
 
 def default_pair_id(recommendation_id: str, receipt: dict[str, Any], chapter_key: str = "") -> str:
-    parts = [str(receipt[key]) for key in PAIR_HASH_FIELDS]
+    parts = [str(receipt.get(key) or "") for key in PAIR_HASH_FIELDS]
     if chapter_key:
         parts.append(f"chapter:{chapter_key}")
     fingerprint = hashlib.sha256("\n".join(parts).encode()).hexdigest()[:20]
@@ -85,29 +87,26 @@ def request_json(request: urllib.request.Request) -> tuple[int, dict[str, Any]]:
 
 
 def validate_inputs(args: argparse.Namespace) -> dict[str, Any]:
-    for path, label in ((args.html, "--html"), (args.pdf, "--pdf"), (args.receipt, "--receipt")):
+    for path, label in ((args.html, "--html"), (args.receipt, "--receipt")):
         if not path.is_file() or path.stat().st_size == 0:
             raise UploadError(f"{label} must point to a non-empty file")
     if args.html.suffix.lower() not in {".html", ".htm"}:
         raise UploadError("--html must be an HTML file")
-    if args.pdf.suffix.lower() != ".pdf" or args.pdf.read_bytes()[:5] != b"%PDF-":
-        raise UploadError("--pdf must be a valid PDF file")
     try:
         receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     except Exception as exc:
         raise UploadError(f"--receipt must be valid UTF-8 JSON: {exc}") from exc
-    if not isinstance(receipt, dict) or receipt.get("schema_version") not in {RECEIPT_SCHEMA, INTEGRITY_SCHEMA} or receipt.get("workflow_contract") != WORKFLOW_CONTRACT or receipt.get("status") != "passed":
-        raise UploadError("--receipt must be a passing integrity receipt or historical v6 validation receipt")
+    if not isinstance(receipt, dict) or receipt.get("schema_version") != INTEGRITY_SCHEMA or receipt.get("workflow_contract") != WORKFLOW_CONTRACT or receipt.get("status") != "passed":
+        raise UploadError(f"--receipt must be a passing {INTEGRITY_SCHEMA} receipt")
     if not receipt_attestation_valid(receipt):
         raise UploadError("--receipt attestation is missing or invalid")
     target = receipt.get("target") or {}
     if target.get("recommendation_id") != args.recommendation_id or normalized_url(str(target.get("source_url") or "")) != normalized_url(args.source_url) or str(target.get("source_title") or "").strip() != args.source_title.strip() or str(target.get("chapter_key") or "") != str(args.chapter_key or ""):
         raise UploadError("--receipt target identity does not match publication arguments")
-    if any(not SHA256_RE.fullmatch(str(receipt.get(key) or "")) for key in PAIR_HASH_FIELDS):
+    if any(not SHA256_RE.fullmatch(str(receipt.get(key) or "")) for key in CONTENT_HASH_FIELDS):
         raise UploadError("--receipt must contain every full lowercase content SHA-256")
-    for key, path in (("html_sha256", args.html), ("pdf_sha256", args.pdf)):
-        if receipt.get(key) != file_hash(path):
-            raise UploadError(f"--receipt {key} does not match {path.name}")
+    if receipt.get("html_sha256") != file_hash(args.html):
+        raise UploadError(f"--receipt html_sha256 does not match {args.html.name}")
     if not SHA256_RE.fullmatch(str(receipt.get("source_sha256") or "")):
         raise UploadError("--receipt source_sha256 must be a full lowercase SHA-256")
     if args.pair_id and not PAIR_RE.fullmatch(args.pair_id):
@@ -151,87 +150,54 @@ def preflight_target(args: argparse.Namespace) -> None:
         raise UploadError("target preflight source title does not match --recommendation-id")
 
 
-def verify_pair(args: argparse.Namespace, pair_id: str, html_id: str, pdf_id: str, receipt: dict[str, Any]) -> dict[str, Any]:
-    if args.corpus_id:
-        _, payload = request_json(urllib.request.Request(f"{args.worker.rstrip('/')}/artifacts/corpora/{urllib.parse.quote(args.corpus_id)}/pairs/{urllib.parse.quote(pair_id)}", headers={"Accept": "application/json"}))
-        pair = payload.get("pair") or {}
-        if pair.get("state") != "staged" or pair.get("recommendation_id") != args.recommendation_id or pair.get("job_id") != args.job_id or pair.get("workflow_run_id") != args.workflow_run_id or pair.get("supersedes_pair_id") != args.supersedes_pair_id or pair.get("r2_verified") is not True:
-            raise UploadError("staged corpus readback does not match the uploaded pair/job")
-        if pair.get("html_artifact_id") != html_id or pair.get("pdf_artifact_id") != pdf_id:
-            raise UploadError("staged corpus readback does not link the uploaded HTML/PDF artifact IDs")
-        expected = {
-            "target_sha256": receipt.get("target_sha256"),
-            "work_item_sha256": receipt.get("work_item_sha256"),
-            "source_extraction_sha256": receipt.get("source_extraction_sha256"),
-            "source_sha256": receipt.get("source_sha256"),
-            "source_scope_sha256": receipt.get("source_scope_sha256"),
-            "coverage_ledger_sha256": receipt.get("coverage_ledger_sha256"),
-            "html_sha256": receipt.get("html_sha256"),
-            "pdf_sha256": receipt.get("pdf_sha256"),
-            "receipt_sha256": file_hash(args.receipt),
-        }
-        if any(pair.get(key) != value for key, value in expected.items()):
-            raise UploadError("staged corpus readback hashes do not match the uploaded receipt")
-        return {"corpus": f"/artifacts/corpora/{args.corpus_id}", "status": "staged", "pair_id": pair_id}
+def verify_companion(args: argparse.Namespace, pair_id: str, html_id: str) -> dict[str, Any]:
     _, payload = request_json(urllib.request.Request(f"{args.worker.rstrip('/')}/capture/{urllib.parse.quote(args.recommendation_id)}/record", headers={"Accept": "application/json"}))
     companion = payload.get("companion") or {}
     if companion.get("status") != "ready" or companion.get("pair_id") != pair_id:
-        raise UploadError("source record did not expose the new pair as ready")
-    if (companion.get("primary") or {}).get("id") != html_id or (companion.get("secondary") or {}).get("id") != pdf_id:
-        raise UploadError("source record does not link the uploaded HTML/PDF artifact IDs")
+        raise UploadError("source record did not expose the new companion as ready")
+    if (companion.get("primary") or {}).get("id") != html_id or companion.get("secondary"):
+        raise UploadError("source record does not link exactly the uploaded HTML artifact")
     return {"source_record": f"/capture/{args.recommendation_id}/record", "status": "ready", "pair_id": pair_id}
 
 
 def recover_publication(args: argparse.Namespace, pair_id: str, receipt: dict[str, Any]) -> dict[str, Any]:
     """Read back one ambiguous POST; never issue another upload automatically."""
     base = args.worker.rstrip('/')
-    path = (f"/artifacts/corpora/{urllib.parse.quote(args.corpus_id)}/pairs/{urllib.parse.quote(pair_id)}"
-            if args.corpus_id else f"/artifacts/pairs/{urllib.parse.quote(pair_id)}/record")
-    _, recovered = request_json(urllib.request.Request(base + path, headers={"Accept": "application/json"}))
+    _, recovered = request_json(urllib.request.Request(f"{base}/artifacts/pairs/{urllib.parse.quote(pair_id)}/record", headers={"Accept": "application/json"}))
     pair = recovered.get("pair") or {}
     html_id = str(pair.get("html_artifact_id") or "")
-    pdf_id = str(pair.get("pdf_artifact_id") or "")
-    if not html_id or not pdf_id or pair.get("recommendation_id") != args.recommendation_id:
-        raise UploadError("canonical pair identity is missing or mismatched")
-    if not args.corpus_id:
-        if pair.get("id") != pair_id or pair.get("complete") is not True or pair.get("retired") or pair.get("corpus_id"):
-            raise UploadError("canonical standalone pair is incomplete, retired, or corpus-owned")
-        for role, artifact_id in (("html", html_id), ("pdf", pdf_id)):
-            _, record = request_json(urllib.request.Request(
-                f"{base}/artifacts/{urllib.parse.quote(artifact_id)}/record", headers={"Accept": "application/json"}))
-            artifact = record.get("artifact") or {}
-            metadata = artifact.get("metadata") or {}
-            if (artifact.get("id") != artifact_id or metadata.get("pair_id") != pair_id
-                    or metadata.get("recommendation_id") != args.recommendation_id
-                    or metadata.get("role") != role or metadata.get("publication_state") != "ready"
-                    or str(metadata.get("chapter_key") or "") != str(args.chapter_key or "")
-                    or metadata.get("html_sha256") != receipt.get("html_sha256")
-                    or metadata.get("pdf_sha256") != receipt.get("pdf_sha256")
-                    or metadata.get("validation_receipt_sha256") != file_hash(args.receipt)
-                    or any((metadata.get("validation_receipt") or {}).get(key) != receipt.get(key) for key in PAIR_HASH_FIELDS)):
-                raise UploadError("canonical artifact identity or hashes do not match the uploaded receipt")
-    verification = verify_pair(args, pair_id, html_id, pdf_id, receipt)
-    return {"ok": True, "status_code": 200, "status": "staged" if args.corpus_id else "ready",
-            "reused": True, "recovered_after_ambiguous_write": True, "corpus_id": args.corpus_id,
-            "pair_id": pair_id, "html_artifact_id": html_id, "pdf_artifact_id": pdf_id,
-            "validation_status": "passed", "verification": verification}
+    if not html_id or pair.get("pdf_artifact_id") or pair.get("recommendation_id") != args.recommendation_id:
+        raise UploadError("canonical companion identity is missing or mismatched")
+    if pair.get("id") != pair_id or pair.get("complete") is not True or pair.get("retired") or pair.get("corpus_id"):
+        raise UploadError("canonical standalone companion is incomplete, retired, or corpus-owned")
+    _, record = request_json(urllib.request.Request(
+        f"{base}/artifacts/{urllib.parse.quote(html_id)}/record", headers={"Accept": "application/json"}))
+    artifact = record.get("artifact") or {}
+    metadata = artifact.get("metadata") or {}
+    if (artifact.get("id") != html_id or metadata.get("pair_id") != pair_id
+            or metadata.get("recommendation_id") != args.recommendation_id
+            or metadata.get("role") != "html" or metadata.get("companion_format") != "html"
+            or metadata.get("publication_state") != "ready"
+            or str(metadata.get("chapter_key") or "") != str(args.chapter_key or "")
+            or metadata.get("html_sha256") != receipt.get("html_sha256")
+            or metadata.get("validation_receipt_sha256") != file_hash(args.receipt)
+            or any((metadata.get("validation_receipt") or {}).get(key) != receipt.get(key) for key in CONTENT_HASH_FIELDS)):
+        raise UploadError("canonical artifact identity or hashes do not match the uploaded receipt")
+    verification = verify_companion(args, pair_id, html_id)
+    return {"ok": True, "status_code": 200, "status": "ready", "reused": True, "recovered_after_ambiguous_write": True,
+            "pair_id": pair_id, "html_artifact_id": html_id, "validation_status": "passed", "verification": verification}
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--html", required=True, type=Path)
-    parser.add_argument("--pdf", required=True, type=Path)
-    parser.add_argument("--receipt", required=True, type=Path, help="passing receipt emitted by validate_artifact.py")
+    parser.add_argument("--receipt", required=True, type=Path, help="passing receipt emitted by run_workflow.py finish")
     parser.add_argument("--recommendation-id", required=True)
     parser.add_argument("--source-url", default="")
     parser.add_argument("--source-title", required=True)
     parser.add_argument("--pair-id")
     parser.add_argument("--revision")
     parser.add_argument("--supersedes-pair-id")
-    parser.add_argument("--corpus-id")
-    parser.add_argument("--job-id")
-    parser.add_argument("--workflow-run-id")
-    parser.add_argument("--worker-identity")
     parser.add_argument("--chapter-key")
     parser.add_argument("--chapter-title")
     parser.add_argument("--chapter-number", type=int)
@@ -257,21 +223,15 @@ def main(argv: list[str]) -> int:
             "workflow_contract": WORKFLOW_CONTRACT,
             "asset_policy": "code-only",
             "recommended_start": "html",
+            "companion_format": "html",
         }
-        if args.corpus_id:
-            if not args.job_id or not args.workflow_run_id or not args.worker_identity:
-                raise UploadError("--corpus-id requires --job-id, --workflow-run-id, and --worker-identity")
-            metadata["corpus_id"] = args.corpus_id
-            metadata["job_id"] = args.job_id
-            metadata["workflow_run_id"] = args.workflow_run_id
-            metadata["worker_identity"] = args.worker_identity
         for key in ("revision", "supersedes_pair_id", "chapter_key", "chapter_title", "chapter_number"):
             value = getattr(args, key)
             if value is not None:
                 metadata[key] = value
         body, content_type = multipart(
             {"metadata": json.dumps(metadata, ensure_ascii=False, separators=(",", ":")), "validation_receipt": args.receipt.read_text(encoding="utf-8")},
-            {"html": (args.html, "text/html; charset=utf-8"), "pdf": (args.pdf, "application/pdf")},
+            {"html": (args.html, "text/html; charset=utf-8")},
         )
         try:
             status, response = request_json(urllib.request.Request(f"{args.worker.rstrip('/')}/artifacts/pairs", data=body, method="POST", headers={"Content-Type": content_type, "Accept": "application/json"}))
@@ -287,12 +247,10 @@ def main(argv: list[str]) -> int:
             emit(result)
             return 0
         html_id = str((response.get("html") or {}).get("id") or "")
-        pdf_id = str((response.get("pdf") or {}).get("id") or "")
-        expected_status = "staged" if args.corpus_id else "ready"
-        if not html_id or not pdf_id or response.get("status") != expected_status:
-            raise UploadError(f"atomic publication returned an incomplete response: {response}")
-        verification = verify_pair(args, pair_id, html_id, pdf_id, receipt)
-        emit({"ok": True, "status_code": status, "status": expected_status, "reused": bool(response.get("reused")), "corpus_id": args.corpus_id, "pair_id": pair_id, "html_artifact_id": html_id, "pdf_artifact_id": pdf_id, "validation_status": "passed", "verification": verification})
+        if not html_id or response.get("pdf") or response.get("status") != "ready":
+            raise UploadError(f"atomic publication returned an unexpected response: {response}")
+        verification = verify_companion(args, pair_id, html_id)
+        emit({"ok": True, "status_code": status, "status": "ready", "reused": bool(response.get("reused")), "pair_id": pair_id, "html_artifact_id": html_id, "validation_status": "passed", "verification": verification})
         return 0
     except (UploadError, SystemExit) as exc:
         if isinstance(exc, SystemExit):

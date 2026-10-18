@@ -10,9 +10,10 @@ Custom agent skills for Learning Compass notes and source-faithful reading compa
 - **Triggers:** `"make notes"`, `"take notes"`, `"extract notes"`, `/learning-notes-extractor`.
 
 ### 2. `lite-visual`
-- **Description:** Turns a source into one complete Arabic reading companion rendered as a linked HTML/PDF pair; books use one pair per chapter.
-- **Features:** Source-faithful explanation, concept-fit visuals, two to four Arabic retrieval/self-explanation pauses, answer-before-feedback HTML, matching PDF writing space with later answers, and deterministic source/render validation. It does not create scores, streaks, XP, or a second mastery system.
-- **Triggers:** Explicit requests for Lite Visual or a source-based HTML/PDF reading companion.
+- **Description:** Turns a source (or one book chapter) into one complete Arabic reading companion: a single code-only HTML article. No PDF is rendered.
+- **How it works:** `extract_source.py` acquires the whole source (YouTube captions through yt-dlp, NotebookLM for audio, scans and caption-less video). The agent writes the teaching as natural Egyptian Arabic in `companion.md`, and `build_companion.py` renders it into one fixed design (embedded IBM Plex Sans Arabic, SIL OFL). `run_workflow.py` and `seal.py` seal it with an HMAC `lite-visual-html-integrity/v1` receipt that attests source/target binding and file hashes and states that quality checks were not run; `upload_pair.py` publishes it to Learning Compass.
+- **Triggers:** Requests to make, remake or publish an Arabic HTML companion (Read / Visual Lite / study guide) for a source or book chapter.
+- **Requirements:** Python 3, yt-dlp, and a Learning Compass checkout at `~/recommendations-worker` with `node_modules` for the article extractor; NotebookLM access for audio and scans; a receipt signing key in `LITE_VISUAL_RECEIPT_SIGNING_KEY` or `~/.hermes/secrets/lite-visual-receipt-signing-key` for sealing.
 
 ## Installation
 

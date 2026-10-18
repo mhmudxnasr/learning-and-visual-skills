@@ -3,9 +3,11 @@
 
 Fast path: a fresh cache hit copies the immutable extraction locally without a
 network request. First-run paths stay source-specific: Mozilla Readability for
-articles, official/manual captions then generated captions for YouTube,
-PyMuPDF plus bounded OCR for PDFs, OPF spine order for EPUB, Pandoc for office
-documents, and direct bytes for text/uploads.
+articles, the video's own caption track through yt-dlp for YouTube (NotebookLM
+only when it has none), NotebookLM full text for audio and PDFs (scans included;
+nothing is transcribed or OCRed locally, and a source NotebookLM cannot read is
+skipped), OPF spine order for EPUB, Pandoc for office documents, and direct
+bytes for text/uploads.
 """
 from __future__ import annotations
 
@@ -31,14 +33,18 @@ import xml.etree.ElementTree as ET
 import httpx
 from bs4 import BeautifulSoup
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import notebooklm_source  # noqa: E402
 
-VERSION = "lite-visual-source-extractor/4"
+
+VERSION = "lite-visual-source-extractor/6"
 SCHEMA = "lite-visual-source-extraction/v1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = Path("/home/mahmud/recommendations-worker")
 ARTICLE_SCRIPT = SCRIPT_DIR / "extract_article.mjs"
 RENDER_SCRIPT = SCRIPT_DIR / "render_page.mjs"
-TRANSCRIPT_SCRIPT = SCRIPT_DIR / "fetch_transcript.py"
+# NotebookLM output is reused for a year: its free plan is rationed, and these sources rarely change.
+NOTEBOOKLM_KINDS = {"youtube", "audio", "pdf"}
 DEFAULT_CACHE = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "learning-compass" / "source-extraction"
 WORD_RE = re.compile(r"[\w\u0600-\u06ff]+", re.UNICODE)
 PAYWALL_RE = re.compile(r"(?:subscribe to (?:continue|read)|sign in to (?:continue|read)|members only|subscriber-only|اشترك (?:للمتابعة|للقراءة)|سجّل الدخول للمتابعة)", re.I)
@@ -364,44 +370,6 @@ def extract_article(data: bytes, source_url: str, allow_browser: bool) -> tuple[
     return text, metadata, warnings
 
 
-def extract_pdf(data: bytes, allow_ocr: bool) -> tuple[str, dict[str, Any], list[str]]:
-    import fitz
-    warnings: list[str] = []
-    try:
-        document = fitz.open(stream=data, filetype="pdf")
-    except Exception as exc:
-        raise ExtractionError(f"PDF could not be opened: {exc}") from exc
-    if document.needs_pass:
-        raise ExtractionError("PDF is encrypted and requires a password")
-    pages: list[str] = []
-    ocr_pages: list[int] = []
-    empty_pages: list[int] = []
-    for index, page in enumerate(document):
-        text = normalize_text(page.get_text("text", sort=True)).strip()
-        if word_count(text) < 8 and allow_ocr:
-            if not shutil.which("tesseract"):
-                raise ExtractionError("PDF needs OCR but tesseract is unavailable")
-            with tempfile.TemporaryDirectory(prefix="lite-visual-ocr-") as directory:
-                image = Path(directory) / "page.png"
-                page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False).save(image)
-                completed = subprocess.run(["tesseract", str(image), "stdout", "-l", "ara+eng", "--psm", "6"], text=True, capture_output=True, timeout=180)
-                if completed.returncode == 0:
-                    text = normalize_text(completed.stdout).strip()
-                    if text:
-                        ocr_pages.append(index + 1)
-        if word_count(text) < 3:
-            empty_pages.append(index + 1)
-        pages.append(f"[PAGE {index + 1}]\n{text}".strip())
-    if not pages:
-        raise ExtractionError("PDF has no pages")
-    if len(empty_pages) > max(2, int(len(pages) * 0.1)):
-        raise ExtractionError(f"PDF remains incomplete after extraction; near-empty pages: {empty_pages[:20]}")
-    if ocr_pages:
-        warnings.append(f"OCR used on pages: {','.join(map(str, ocr_pages))}")
-    text = normalize_text("\n\n".join(pages))
-    if word_count(text) < 20:
-        raise ExtractionError("PDF extraction is too shallow")
-    return text, {"engine": "pymupdf+tesseract" if ocr_pages else "pymupdf", "page_count": len(pages), "ocr_pages": ocr_pages, "near_empty_pages": empty_pages, "checks": {"all_pages_visited": True, "near_empty_pages_within_limit": True}}, warnings
 
 
 def extract_epub(data: bytes) -> tuple[str, dict[str, Any], list[str]]:
@@ -472,18 +440,105 @@ def extract_document(path: Path) -> tuple[str, dict[str, Any], list[str]]:
     return text, {"engine": "pandoc", "checks": {"minimum_words": True}}, []
 
 
-def extract_transcript(source: str, languages: str, timestamps: bool, allow_audio_fallback: bool) -> tuple[str, dict[str, Any], list[str]]:
-    with tempfile.TemporaryDirectory(prefix="lite-visual-transcript-") as directory:
-        output = Path(directory) / "source.txt"
-        manifest = Path(directory) / "receipt.json"
-        command = ["python3", str(TRANSCRIPT_SCRIPT), source, "--output", str(output), "--manifest", str(manifest), "--languages", languages]
-        if timestamps:
-            command.append("--timestamps")
-        if not allow_audio_fallback:
-            command.append("--no-audio-fallback")
-        run(command, "timed-media transcript", timeout=3600)
-        receipt = json.loads(manifest.read_text(encoding="utf-8"))
-        return normalize_text(output.read_text(encoding="utf-8")), receipt, list(receipt.get("warnings") or [])
+def _caption_text(events: list[dict[str, Any]], timestamps: bool) -> tuple[str, int, int]:
+    """Join json3 caption events into paragraphs, with a [m:ss] label about every 30 s."""
+    paragraphs: list[tuple[int, str]] = []
+    current: list[str] = []
+    started_ms = None
+    last_ms = 0
+    cues = 0
+    for event in events:
+        text = "".join(seg.get("utf8", "") for seg in event.get("segs") or []).replace("\n", " ").strip()
+        if not text:
+            continue
+        cues += 1
+        at = int(event.get("tStartMs") or 0)
+        last_ms = max(last_ms, at + int(event.get("dDurationMs") or 0))
+        if started_ms is None:
+            started_ms = at
+        current.append(text)
+        if at - started_ms >= 30000:
+            paragraphs.append((started_ms, " ".join(current)))
+            current, started_ms = [], None
+    if current:
+        paragraphs.append((started_ms or 0, " ".join(current)))
+
+    def label(ms: int) -> str:
+        seconds = ms // 1000
+        hours, rest = divmod(seconds, 3600)
+        return f"[{hours}:{rest // 60:02d}:{rest % 60:02d}]" if hours else f"[{rest // 60}:{rest % 60:02d}]"
+
+    body = "\n\n".join(f"{label(at)} {text}" if timestamps else text for at, text in paragraphs)
+    return body, cues, last_ms
+
+
+def extract_youtube_captions(source: str, languages: str, timestamps: bool) -> tuple[str, dict[str, Any], list[str]] | None:
+    """The video's own captions via yt-dlp: a human track in a preferred language first, else the
+    automatic track of the spoken language. Returns None when the video has neither or yt-dlp fails,
+    so NotebookLM can still read it."""
+    try:
+        return _youtube_captions(source, languages, timestamps)
+    except (ExtractionError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        print(f"yt-dlp captions unavailable, falling back to NotebookLM: {exc}", file=sys.stderr)
+        return None
+
+
+def _youtube_captions(source: str, languages: str, timestamps: bool) -> tuple[str, dict[str, Any], list[str]] | None:
+    info = json.loads(run(["yt-dlp", "-J", "--skip-download", "--no-playlist", source], "yt-dlp metadata", timeout=180))
+    manual = info.get("subtitles") or {}
+    automatic = info.get("automatic_captions") or {}
+    spoken = str(info.get("language") or "").split("-")[0]
+    wanted = [code.strip() for code in languages.split(",") if code.strip()]
+    choice = next(((code, "manual") for code in wanted if code in manual), None)
+    if not choice and spoken:
+        choice = next(((code, "manual") for code in manual if code.split("-")[0] == spoken), None)
+    if not choice:
+        # Machine-translated automatic tracks are skipped; only the spoken language is faithful.
+        candidates = [f"{spoken}-orig", spoken] if spoken else []
+        candidates += [code for code in automatic if code.endswith("-orig")]
+        choice = next(((code, "automatic") for code in candidates if code in automatic), None)
+    if not choice:
+        return None
+    code, track = choice
+    with tempfile.TemporaryDirectory(prefix="lite-visual-captions-") as folder:
+        run(["yt-dlp", "--skip-download", "--no-playlist", "--write-subs" if track == "manual" else "--write-auto-subs",
+             "--sub-langs", code, "--sub-format", "json3", "-o", f"{folder}/captions", source], "yt-dlp captions", timeout=300)
+        files = list(Path(folder).glob("captions*.json3"))
+        if not files:
+            return None
+        events = json.loads(files[0].read_text(encoding="utf-8")).get("events") or []
+    text, cues, last_ms = _caption_text(events, timestamps)
+    text = normalize_text(text)
+    if word_count(text) < 20:
+        return None
+    duration = float(info.get("duration") or 0)
+    coverage = round(min(1.0, last_ms / 1000 / duration), 3) if duration else None
+    warnings = []
+    if track == "automatic":
+        warnings.append("automatic captions: names and terms may be misheard")
+    if coverage is not None and coverage < 0.9:
+        warnings.append(f"captions end at {coverage:.0%} of the video")
+    return text, {
+        "engine": "yt-dlp-captions",
+        "title": info.get("title"),
+        "language": code.removesuffix("-orig"),
+        "caption_track": track,
+        "caption_language": code,
+        "cue_count": cues,
+        "duration_seconds": duration or None,
+        "caption_coverage": coverage,
+        "checks": {"minimum_words": True, "reaches_end": coverage is None or coverage >= 0.9},
+    }, warnings
+
+
+def extract_with_notebooklm(source: str, pdf: bool = False) -> tuple[str, dict[str, Any], list[str]]:
+    try:
+        text, metadata = notebooklm_source.fulltext(source, pdf)
+    except notebooklm_source.NotebookLMBudgetPaused as exc:
+        raise ExtractionError(f"paused, rerun the same extraction later: {exc}") from exc
+    except notebooklm_source.NotebookLMUnavailable as exc:
+        raise ExtractionError(f"skip this source: {exc}") from exc
+    return normalize_text(text), metadata, []
 
 
 def detect_kind(source: str, requested: str) -> str:
@@ -504,14 +559,13 @@ def detect_kind(source: str, requested: str) -> str:
 
 
 def cache_identity(source: str, kind: str, languages: str, timestamps: bool, provenance: dict[str, Any] | None = None) -> str:
-    identity: dict[str, Any] = {"version": VERSION, "source": source, "kind": kind, "languages": languages, "timestamps": timestamps}
+    identity: dict[str, Any] = {"version": VERSION, "source": source, "kind": kind}
+    if kind not in NOTEBOOKLM_KINDS or kind == "youtube":
+        identity.update(languages=languages, timestamps=timestamps)
     path = Path(source)
     if not is_url(source) and path.exists():
         stat = path.stat()
         identity["local"] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
-    if kind in {"youtube", "audio"}:
-        # Adapter changes must invalidate receipts made by older, shallower gates.
-        identity["transcript_adapter_sha256"] = sha256_bytes(TRANSCRIPT_SCRIPT.read_bytes())
     if provenance:
         identity["provenance"] = provenance
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
@@ -537,8 +591,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--languages", "--language", default="ar,ar-SA,ar-EG,en")
     parser.add_argument("--no-timestamps", action="store_true")
     parser.add_argument("--no-browser", action="store_true")
-    parser.add_argument("--no-ocr", action="store_true")
-    parser.add_argument("--no-audio-fallback", action="store_true")
     parser.add_argument("--verified-transcript-receipt", type=Path, help="hash-bound local transcript receipt")
     parser.add_argument("--canonical-source", help="official media URL bound by the verified transcript receipt")
     parser.add_argument("--strip-embedded-timestamps", action="store_true", help="remove bracketed timestamp labels after receipt-hash verification")
@@ -581,7 +633,7 @@ def main(argv: list[str]) -> int:
     key = cache_identity(args.source, kind, args.languages, not args.no_timestamps, provenance)
     cache_text = args.cache_dir / key[:2] / key / "source.txt"
     cache_manifest = args.cache_dir / key[:2] / key / "manifest.json"
-    default_age = 30 * 86400 if kind in {"youtube", "audio"} else 86400 if is_url(args.source) else 3650 * 86400
+    default_age = 365 * 86400 if kind in NOTEBOOKLM_KINDS else 86400 if is_url(args.source) else 3650 * 86400
     max_age = args.cache_max_age or default_age
     try:
         if not args.force and cache_text.is_file() and cache_manifest.is_file() and time.time() - cache_manifest.stat().st_mtime <= max_age:
@@ -605,8 +657,12 @@ def main(argv: list[str]) -> int:
                 args.strip_embedded_timestamps,
                 args.verified_repetition_review,
             )
-        elif kind in {"youtube", "audio"}:
-            text, metadata, warnings = extract_transcript(args.source, args.languages, not args.no_timestamps, not args.no_audio_fallback)
+        elif kind == "youtube" and (captions := extract_youtube_captions(args.source, args.languages, not args.no_timestamps)):
+            # The video's own captions are the main path; NotebookLM is the fallback when there are none.
+            text, metadata, warnings = captions
+        elif kind in {"youtube", "audio"} or (kind == "pdf" and is_url(args.source)):
+            # NotebookLM fetches public URLs itself, so nothing is downloaded here.
+            text, metadata, warnings = extract_with_notebooklm(args.source, kind == "pdf")
         else:
             local_path = Path(args.source)
             content_type = ""
@@ -625,7 +681,7 @@ def main(argv: list[str]) -> int:
                 data = local_path.read_bytes()
             try:
                 if kind == "article": text, metadata, warnings = extract_article(data, resolved_source, not args.no_browser)
-                elif kind == "pdf": text, metadata, warnings = extract_pdf(data, not args.no_ocr)
+                elif kind == "pdf": text, metadata, warnings = extract_with_notebooklm(args.source if is_url(args.source) else str(local_path), True)
                 elif kind == "epub": text, metadata, warnings = extract_epub(data)
                 elif kind == "document": text, metadata, warnings = extract_document(local_path)
                 elif kind == "text":

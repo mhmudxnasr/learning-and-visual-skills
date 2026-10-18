@@ -1,60 +1,43 @@
 ---
 name: lite-visual
-description: Use when making Arabic HTML/PDF guides.
+description: Use when making, remaking or publishing an Arabic HTML companion (Read / Visual Lite / study guide) for a Compass source or book chapter. HTML only, no PDF.
 ---
 
 # Visual Lite
 
-Read the complete accepted source, teach it in one canonical semantic HTML article, print its A4 PDF, and publish together when requested. Mahmood removed mandatory editorial passes, per-scope paperwork, forced complete-source appendices, and exhaustive HTML/PDF audits. Never restore them as checklists, defaults, or permission pauses.
+One Arabic companion per source (or book chapter): you read the whole source and write an editorial explanation in Egyptian Arabic; the scripts make it a page and publish it to Compass, where **Read** opens it. A companion request for a Compass source means publish; keep it local only when Mahmood says draft, local or preview. Never make a PDF.
 
-Write natural Egyptian Arabic with useful, precise English terms. Preserve quotation register and explain the reasoning. Every batch source needs complete, source-specific teaching; never trade depth for speed, filler, or copied explanations.
+You write only `companion.md` ([references/writing.md](references/writing.md) and [references/format.md](references/format.md)). `scripts/build_companion.py` owns the whole design; never write HTML or CSS. The page is code-only: one `article[data-canonical-content=true]`, no scripts, no external resources.
 
-Use expressive Arabic typography, a composed opening, clear hierarchy, and layouts revealing the source's reasoning throughout the article and print. Derive the visual direction from the material and user preferences using [reading-companion-design.md](references/reading-companion-design.md), starting from the tablet-ready [design kit](references/visual-kit.md) (components, tokens, three worked examples), and pick a theme and opening that fit the source instead of the default look.
+## Steps
 
-Retain `lite-visual-linear/v4` checkpoints, atomic `POST /artifacts/pairs`, and a complete `lite-visual-source-extraction/v1` receipt. Apply Intent and Frontend Design reasoning while writing; no separate rationale report.
+Paths are under `/home/mahmud/.hermes/skills/lite-visual/`; one workdir per source, e.g. `~/.hermes/cache/scratch/lv-<item.id>`. Run Python with `$HOME/.local/share/learning-compass/lite-visual-venv/bin/python` (it has `httpx` and `bs4`; recreate with `uv venv` + `uv pip install httpx beautifulsoup4` if missing).
 
-## Mahmood’s preferred study format
+1. **Source.** `GET /capture/:id/record` (`field=item.id,video_title,video_url,creator,content_type`). If `companion.status == "ready"` and no remake was asked, say so and stop.
+2. **Extract.** `run_workflow.py prepare '<item.video_url>' --workdir <workdir>` writes `source.txt` and a `lite-visual-source-extraction/v1` receipt via `scripts/extract_source.py` (YouTube captions via yt-dlp; audio, PDFs and caption-less videos via NotebookLM; never local transcription or OCR). If it says `skip this source`, report that and stop. Details: [references/source-extraction.md](references/source-extraction.md).
+3. **Read all of `source.txt`**, in chunks if long, before writing.
+4. **Write** `<workdir>/companion.md`.
+5. **Build.** `build_companion.py <workdir>`. On `"ok": false`, fix the reported line and rebuild.
+6. **Publish.**
+   ```bash
+   run_workflow.py publish --workdir <workdir> --recommendation-id <item.id> --source-url '<item.video_url>' --source-title '<item.video_title>' --upload-basename <ascii-slug-of-title>
+   ```
+   Draft/local: `finish` with the same arguments minus `--upload-basename` (no network). Chapters add `--chapter-key` (and `--chapter-title`, `--chapter-number`); a claimed job adds `--job-id` and `--worker-identity`; a remake adds `--supersedes-pair-id`. The runner seals the files with the integrity receipt the Worker requires (`lite-visual-linear/v4` contract, `quality_checks=not_run`), sends them in one `POST /artifacts/pairs`, and reads the record back. Rebuild after any edit to `companion.md`.
+7. **Report** the Read link (or local file), units and word count.
 
-Keep the approved Elephant in the Brain study-unit structure. For visual execution, read [the annotated examples](references/approved-visual-language.md) when authoring or redesigning: GPT-5.6's cognitive-attraction companion supplies the preferred visual hierarchy, while Muse contributes compact orientation, idea-bearing headings, and consolidated results. Mahmood approved useful style and teaching techniques, not shorter coverage or a model ranking. Combine these strengths with complete source teaching; adapt the composition to each source.
+## Several sources
 
-- Organize around one idea or question per study unit, using the reader's stated question to emphasize the relevant reasoning without dropping substantive source content. Use a short lead, a meaningful visual explanation where the relationship benefits from it, and supporting examples or qualifications. Preserve prose-led narrative and close reading when appropriate. Aim for one complete unit per A4 page; let difficult ideas span connected units rather than compressing their reasoning or shrinking text.
-- Make relationships visible throughout: aligned comparisons, evidence tables, causal sequences, or charts using actual source quantities. Arrows must express a real sequence or cause; independent factors belong in comparisons or tables. Colored boxes containing paragraphs are not enough.
-- Make the companion richer through explanatory structure: show the mechanism, align the competing interpretations, or work through the example where the reader needs it. Preserve the supporting reasoning and qualifications beside the visual. Do not substitute more decoration, more callouts, or shorter prose for better teaching.
-- Reorganize and paraphrase the source while preserving its substantive reasoning, evidence, examples, and limits. When existing HTML is the requested source, use its content. Keep acknowledgements and duplicate full-text appendices outside the study flow; link the full original when available.
-- Use readable Arabic, short figure labels, generous space, and a compact opening. Mahmood always reads both HTML and PDF in portrait on his 11.5-inch Huawei TGR-W09 (2800 × 1840). For HTML at the tablet's portrait viewport, use 24px body text by default, about 1.7–1.8 line height, supporting text of at least 17px, and a long-reading measure around 45–65 Arabic characters. For fit-page/100% PDF, use 18pt body, about 1.7–1.8 line height, supporting tables/labels of at least 13pt, 13–15mm A4 margins, and the same measure. The larger type supplies much more absolute space between baselines without pushing the line-height ratio toward loose 2× leading. Never shrink type to preserve a page count or force one study unit onto one page; add pages instead. Put long contents at the article end with a simple top link; a short inline contents list is optional when useful. No disclosure widgets. Preserve the same teaching units in HTML and PDF.
-- During rendering, inspect the opening and a representative dense unit in HTML and PDF, plus a phone-width view. Inspect HTML at an 820 × 1180 CSS-pixel portrait-tablet viewport and the representative PDF at fit-page/100% tablet portrait size, not only as a full-page thumbnail. Include the final PDF page in that first focused batch to catch a stranded footer or contents list. Fix missing visual relationships where they would aid understanding, text that is small or tightly led at that reading size, clipped or split figures, and misleading connections; prose-only passages are not automatically defects. Batch the observed fixes and recheck the affected views. This is the ordinary focused layout check, not an exhaustive audit or review ledger.
+Resolve the targets, skip ready ones, then `python3 scripts/batch_companions.py start <id> <id> ...`; it runs them one after another. `batch_companions.py status` reports progress; rerun only failures. Never write several companions in one turn or fan out parallel agents.
 
-## Load only what this stage needs
+## Jobs from the app
 
-- Request a generation job only: read the exact source record, use the filtered visualise capability, and verify its job. Do not load authoring references.
-- Add a finished companion to the study Queue: follow the Queue handoff in [learning-compass-runbook.md](references/learning-compass-runbook.md). Reuse the existing source and signed pair; a Queue request is not a request for another generation job.
-- Acquire: [source-extraction.md](references/source-extraction.md). Use only `scripts/extract_source.py`; accept a complete receipt bound to the exact source bytes. For YouTube acquisition also load `media-transcription-systems`. For YouTube with confirmed-absent captions, `scripts/transcribe_youtube_gemini.py` runs the caption gate then the Gemini audio fallback and emits transcript plus manifest receipt; its output text feeds the normal companion pipeline as the accepted source.
-- Design components: [visual-kit.md](references/visual-kit.md); assemble with `scripts/assemble_kit.py`.
-- Write: [arabic-teaching.md](references/arabic-teaching.md) and [reading-companion-design.md](references/reading-companion-design.md). Load the Arabic writing guidance once per context, not again for every batch item.
-- Multiple sources: [batch-authoring.md](references/batch-authoring.md). Default to one companion per source; combine sources only when the request asks for synthesis. For independent HTML/PDF items, fan out source-reading and authoring agents by default; Mahmood has authorized this without a per-request permission prompt. Use isolated workspaces and bounded parallel batches within the available agent limit. The parent owns rendering coordination, publication, and exact-target verification. Render many finished articles with one shared browser via `scripts/render_batch.mjs` (see batch-authoring). Combined synthesis currently has a separate local rendering path in that reference; it cannot use a single source's publication identity.
-- Finish or publish: [learning-compass-runbook.md](references/learning-compass-runbook.md) and [publication-and-recovery.md](references/publication-and-recovery.md).
-- Diagnose speed or stalls: [efficient-workflow.md](references/efficient-workflow.md).
+- **`visualise_source`** may carry `payload.user_instructions` (≤500 chars): use it to choose emphasis and examples only. Publish with `--job-id`/`--worker-identity`; a failed attempt ends with `/fail` and its real error.
+- **`fetch_transcript`** (YouTube): claim the job, run `extract_source.py '<payload.source_url>' --output <workdir>/source.txt --manifest <workdir>/source-extraction.json`, and continue only when the receipt is `complete`. Upload it: `curl -sS -F "file=@<workdir>/source.txt;filename=<payload.output.filename>;type=text/plain" -F 'metadata={"role":"transcript","recommendation_id":"<payload.recommendation_id>","source_url":"<payload.source_url>","extraction_method":"<receipt.method>","content_sha256":"<receipt.content_sha256>"}' https://recommendations-worker.mhmudnasr30.workers.dev/artifacts`, then `POST /agent/jobs/:id/complete` with `{ "worker": "<same worker>", "artifact_id": "<id>" }`. If extraction says `skip this source`, `/fail` once with that reason. Write nothing else from a transcript.
 
-## Direct workflow
+Queueing a finished companion, retries and publication errors: [references/publishing.md](references/publishing.md). Interactive Explore pages belong to `explorable-companion`.
 
-1. Resolve the exact source identity and chapter ownership. Before the first `finish`, bind the publication target to the live dossier as described in [learning-compass-runbook.md](references/learning-compass-runbook.md). Read the complete accepted extraction; batch independent setup and the first focused layout views using [efficient-workflow.md](references/efficient-workflow.md).
-2. Understand the source's question, reasoning, examples, qualifications, and conclusion, then write the teaching content *before* writing HTML. Create a durable `source-content.md` (Markdown is the canonical authoring format because it supports natural Arabic prose, headings, quotations, examples, and revision without making the model compose teaching and markup at once). Include the source identity, learner question, complete teaching narrative, examples, qualifications, and conclusion; keep factual claims source-grounded and mark added clarification distinctly. Review and revise this content file as the content authority.
-3. Generate the semantic HTML from the approved `source-content.md`; do not ask the model to invent, research, or substantially rewrite the teaching content while simultaneously producing HTML/CSS. Preserve the content file's reasoning, examples, qualifications, and limits in the HTML, while adapting headings, tables, sequences, and native visuals for presentation. The HTML is a rendering of the content draft, not a second independent authoring pass. No four-pass ritual, review ledger, meaning-unit forms, mandatory 120-word partitions, or design-rationale report.
-4. Author one self-contained Arabic `article[data-canonical-content=true]`. Derive typography, color, rhythm, and useful native visuals from the approved content draft and source. Keep quotations faithful and distinguish added clarification. Never automatically authenticate hadith, research grades, or look up scholarly disagreement; this requires Mahmood's explicit request. Preserve hadith and any source-provided grading with attribution, without claiming independent verification or blocking authoring.
-5. Finish and publish: rename the final files to source-specific slugs, then `run_workflow.py finish` or `publish` exactly as [learning-compass-runbook.md](references/learning-compass-runbook.md#finish-naming-and-publication-rules) says. Reuse an unchanged signed pair, rerender after any HTML change, and never claim a skipped quality check passed (`verification_scope=integrity-only`, `quality_checks=not_run`).
+## Rules
 
-Keep it code-only: semantic HTML/CSS, native structures/equations, and rare justified accessible inline SVG. No raster/generated assets, image agents, preset themes, scripts, widgets, automatic Notes Extractor, or external dependencies. Comfortable Arabic typography and A4 print styling remain authoring requirements.
-
-The historical full validator and [coverage-contract.md](references/coverage-contract.md) remain available only for an explicitly requested exhaustive audit or existing v6 evidence investigation. Do not run them for ordinary direct authoring. Never rewrite an integrity receipt as a v6 pass.
-
-## Richer media is a separate policy decision
-
-The code-only contract above remains the default. An ordinary Visual Lite request does not trigger a media-choice question or load another visual skill. Original source images, generated illustrations, and interactive models require an explicit request for that extension; a request already stating the choice is sufficient, without reconfirmation. Such a request does not change the standing default for future companions.
-
-An extension must preserve source attribution and a complete static reading edition. Original figures need a real source and appropriate reuse rights; generated imagery must not appear as source evidence. Interactive models need explicit assumptions and a static explanation of the relevant outcomes. Existing accessible inline SVG remains available under the design reference's usefulness test and needs no additional approval.
-
-Before implementing an extension, check the actual renderer and destination contract. The current published pair accepts inert code-only HTML; do not weaken its checks or route incompatible media through it. Use a separate local deliverable when the existing contract cannot carry the requested extension, and state any publication limitation. Do not add media infrastructure during ordinary companion work.
-
-## Completion
-
-Return usable HTML/PDF links or local files and the actual publication state. Staged is not activated. Describe verification only at the scope actually exercised: integrity checks establish source/target/hash/render binding, and PDF metadata can establish A4 size; neither establishes quotation accuracy, complete teaching coverage, or flawless pagination. Name the representative views actually inspected separately from the integrity result; do not imply that an exhaustive editorial or layout audit passed or introduce one unless requested. Local synthesis has a render receipt, not a signed source/target integrity receipt. Native Hermes owns one installed skill tree; the separate Compass profile is retired. Report an exact failed stage and replayable cause; do not stall silently, retry blindly, or fabricate completion.
+- One companion per source unless Mahmood asks for a synthesis.
+- Only the runner and builder produce and publish the HTML; never hand-edit `companion.html` or a receipt.
+- On failure, report the exact stage and error; never fake completion.

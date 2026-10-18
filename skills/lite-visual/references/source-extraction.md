@@ -22,39 +22,27 @@ The command returns one JSON receipt and writes exactly one immutable UTF-8 `sou
 | Hash-verified local transcript | local UTF-8 plus its accepted transcript receipt | under 100 ms | reacquire the timed source | transcript/audio hash mismatch, failed quality/chunk gate, non-monotonic segments, repeated 40-word passage, or canonical media mismatch |
 | Static article | bounded public HTTP fetch → Mozilla Readability in a script-disabled JSDOM | network + roughly 0.1–1 s parsing | Playwright with images/media/fonts blocked, then Readability | short body, paywall/truncation marker, fewer than three meaningful blocks, excessive duplicate boilerplate |
 | JavaScript article | bounded Playwright render → Readability | about 3–15 s | none | completeness gate remains red |
-| YouTube | `youtube-transcript-api`: requested human captions first, then generated captions | about 0.2–3 s when captions are available | `yt-dlp` subtitle JSON/VTT; then `faster-whisper` only after a complete caption inventory confirms no manual or generated tracks | caption lookup failed without proving absence, a published track is unreadable/incomplete, fewer than 20 words, raw VTT leaked, excessive repeated cues, or audio fallback failed |
-| Podcast/audio/video | published captions when the host exposes them | seconds | `yt-dlp` audio → `faster-whisper`; local media goes directly to Whisper | download/transcription failure or shallow transcript |
-| Text-layer PDF | PyMuPDF, every page in order with `[PAGE n]` anchors | usually under 1 s for ordinary documents | Tesseract `ara+eng` only on near-empty pages | encryption, no pages, too many pages remain empty |
-| Scanned PDF | PyMuPDF page render → Tesseract `ara+eng` | roughly 1–10 s per OCR page | none | page coverage remains incomplete |
+| YouTube | yt-dlp reads the video's own captions (json3): a human track in `--languages` order, else the spoken language's automatic (`-orig`) track; `[m:ss]` every ~30 s | about 5–20 s | NotebookLM when the video has no usable captions or yt-dlp fails | neither yields 20 words |
+| Podcast/audio/video | NotebookLM: public URL directly, local file uploaded once | about 1–5 min | none: skip the source | NotebookLM rejects it or returns fewer than 20 words |
+| PDF (text-layer or scanned) | NotebookLM: public URL directly, local file uploaded once; it reads scans itself | about 10 s–5 min | none: skip the source | NotebookLM rejects it or returns fewer than 20 words |
 | EPUB | container → OPF package → exact spine order → XHTML text | normally under a few seconds | none | broken/missing spine resources or shallow body |
 | DOCX/ODT/RTF | Pandoc plain-text conversion | normally under a few seconds | none | conversion failure or shallow body |
 
 These are routing budgets, not success claims. Record the observed `elapsed_ms`; never invent a duration.
 
-## YouTube fidelity order
+## YouTube: captions first
 
-The adapter checks requested languages `ar,ar-SA,ar-EG,en`, but fidelity outranks translation convenience:
+`extract_source.py` reads YouTube captions with yt-dlp (JS runtime: Node, set in `~/.config/yt-dlp/config`). It never uses machine-translated tracks. The receipt has `method=yt-dlp-captions` and `adapter.caption_track` (`manual`/`automatic`), `caption_language`, `cue_count`, `caption_coverage`; a warning flags automatic captions and captions that stop before 90% of the video. Only when there is no usable track does it fall back to NotebookLM below.
 
-1. Human-created captions in a requested language.
-2. Generated captions in a requested language.
-3. Another original published caption track.
-4. `yt-dlp` subtitle representations, preferring JSON3 and cleaning VTT when necessary.
-5. Download audio and transcribe with local `faster-whisper` (`small`, int8, VAD) only after a complete caption inventory positively confirms zero manual and zero generated tracks and no adapter reports a track.
+## Audio, PDFs, and caption-less YouTube: NotebookLM
 
-Always retain timestamps for timed media. The manifest identifies `method`, `caption_kind`, selected language, transcript hash, word count, elapsed time, and all failed faster methods. A successful slow fallback must not hide why the fast lane failed.
+Audio, PDFs (scanned ones included) and YouTube videos without captions are read by NotebookLM through `scripts/notebooklm_source.py`; nothing is transcribed or OCRed locally. When NotebookLM cannot read a source, extraction blocks with `skip this source` and the source is skipped, not retried another way.
 
-A caption lookup error is not proof that captions are absent. If a track exists but fails download, parsing, language, or completeness checks, block extraction and preserve that evidence instead of invoking audio. Every YouTube audio-derived manifest must include `audio_fallback_reason=youtube_captions_confirmed_absent` and the exact `caption_absence_evidence`.
+Each call adds the source to the shared `Compass transcripts` notebook, waits for indexing, reads `notebooklm source fulltext`, and deletes the source again. Public URLs are fetched by NotebookLM, so Hermes downloads nothing; only local files are uploaded. NotebookLM's text has no timestamps or `[PAGE n]` anchors. The receipt records `method=notebooklm` and `adapter.notebooklm_source_kind`.
 
-Direct adapter command when diagnosis is required:
+NotebookLM is on the free plan (see the `notebooklm` skill). Full-text reads cost no chat questions; a URL already indexed in any notebook is reused instead of re-added; only scanned PDFs spend questions (one per 10-page chunk, at most 40 per rolling 24h, each chunk cached). A `paused, rerun the same extraction later` error means the budget is spent: rerun after the reported time instead of skipping. NotebookLM results are cached for a year.
 
-```bash
-python3 /home/mahmud/.hermes/skills/lite-visual/scripts/fetch_transcript.py \
-  --url 'https://www.youtube.com/watch?v=...' \
-  --languages ar,ar-SA,ar-EG,en \
-  --timestamps \
-  --output /abs/work/source.txt \
-  --manifest /abs/work/transcript.json
-```
+Direct diagnosis: `python3 /home/mahmud/.hermes/skills/lite-visual/scripts/notebooklm_source.py '<URL-or-file>' > source.txt` (exit 1 means skip).
 
 For the accepted Riyadh timed-media corpus with a `riyadh-salihin-local-transcript/v1` receipt, keep the official media URL as source identity and route it through the same extractor:
 
@@ -85,7 +73,7 @@ For Islamweb audio transcripts, prefer the publisher's observed `Fulltxt.php?aud
 
 The cache key binds source identity, source kind, extractor version, language order, timestamp policy, and local file size/mtime when applicable. Remote article cache entries expire after one day; timed-media entries after 30 days. A workflow retry uses the already checkpointed content hash even if the normal freshness window later expires. `--force` deliberately re-extracts.
 
-Direct local ASR retains the provider's original segment starts, ends, and repeated speech. Its adapter measures duration with ffprobe, hashes the exact audio and transcript, and blocks non-monotonic/overlapping times, uncovered endings, long gaps, implausible text, or language failure. `WHISPER_LANGUAGE`, `WHISPER_CPU_THREADS`, and `WHISPER_MODEL` are explicit runtime controls; `WHISPER_EVIDENCE_PATH` optionally retains append-only raw segment evidence when a long run fails. That diagnostic file is not an accepted transcript or resumable receipt. The router's timed-media cache key includes the adapter script hash so an earlier shallow receipt cannot survive a repair.
+The timed-media and PDF cache key includes the NotebookLM adapter hash, so a receipt made by an older adapter cannot survive a repair.
 
 The cache accelerates acquisition; it never weakens source coverage. A cache hit is accepted only when its stored SHA-256 matches the bytes. Keep `source.txt` and its manifest together through validation and publication. On any blocked receipt, preserve the error and stop before authoring or advancing the runner's `map_coverage` checkpoint; do not ask the authoring model to fill missing source material.
 
@@ -97,6 +85,7 @@ Give the authoring model only:
 - immutable `source.txt` path and SHA-256;
 - extraction manifest path, method, language, and warnings;
 - exact page/timestamp/spine anchors already present in the text;
-- the current direct-authoring guidance in `SKILL.md` and its teaching/design references, plus the reader's stated question when available.
+- `SKILL.md`, `references/writing.md` and `references/format.md`, plus the reader's stated question when available.
 
-Do not give it cookies, raw page scripts, network credentials, cache internals, failed partial bodies, or several competing extractions of the same source. Use one verified body per accepted source. Explicit synthesis keeps each source's body and receipt separately, following [batch-authoring.md](batch-authoring.md); never manufacture a combined extraction receipt.
+Do not give it cookies, raw page scripts, network credentials, cache internals, failed partial bodies, or several competing extractions of the same source. Use one verified body per accepted source. Never manufacture a combined extraction receipt.
+
