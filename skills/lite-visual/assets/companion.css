@@ -1,0 +1,129 @@
+/* Visual Lite — the one companion design, rendered by build_companion.py. Do not retune per source.
+   Built for the Compass HTML reader: a light page (Night mode inverts it), one text column it can
+   widen or narrow, h2 units for Contents and section mode, and the TGR-W09 portrait floors
+   (body 24px / substantive ≥20px / supporting ≥17px / leading ≥1.65). */
+:root{
+  --paper:#fcfbf8;--ink:#1b2333;--muted:#566075;--line:#dcd8cf;--quiet:#f3f1ec;
+  --accent:#1f5f8b;--accent-soft:#e6eff5;
+  --alert:#b5473c;--alert-soft:#f8e9e5;
+  --gold:#97701f;--gold-soft:#f5eedc;
+  --sans:"PlexArabic","IBM Plex Sans Arabic","Noto Sans Arabic",system-ui,sans-serif;
+  --naskh:"Noto Naskh Arabic","Amiri","PlexArabic",serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;background:var(--paper)}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 24px/1.8 var(--sans);font-kerning:normal;text-rendering:optimizeLegibility}
+.wrap{max-width:780px;margin:0 auto;padding:44px 32px 72px}
+article{counter-reset:unit}
+p{margin:0 0 .9em}
+strong{font-weight:700}
+em{font-style:normal;color:var(--accent);font-weight:700}
+bdi,code{unicode-bidi:isolate}
+.nw{white-space:nowrap}
+code{direction:ltr;font:400 .86em/1.5 ui-monospace,"Noto Sans Mono",monospace;background:var(--quiet);padding:.08em .32em;border-radius:4px}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:.24em}
+ul,ol{margin:0 0 1em;padding-inline-start:1.3em}
+li{margin-bottom:.35em}
+ol{list-style:arabic-indic}
+li::marker{color:var(--accent);font-weight:700}
+
+/* Opening: what this is, the question, the answer in one place. */
+.opening{padding-bottom:4px}
+.kicker{margin:0 0 6px;font-size:18px;line-height:1.6;font-weight:700;color:var(--accent)}
+h1{margin:0 0 18px;font-size:44px;line-height:1.4;font-weight:700;text-wrap:balance}
+.question{margin:0 0 22px;padding:12px 18px;background:var(--quiet);border-radius:6px;font-size:22px;line-height:1.75}
+.question span{display:block;font-size:17px;font-weight:700;color:var(--muted)}
+.thesis{margin:22px 0;padding:20px 0;border-block:3px solid var(--accent)}
+.thesis p{font-size:27px;line-height:1.75;font-weight:700;color:var(--accent);margin:0}
+.thesis p+p{margin-top:.6em;font-weight:400;color:var(--ink);font-size:24px}
+
+/* Units: one idea each; the number is decoration, so Contents shows only the heading. */
+.unit{padding-top:44px;counter-increment:unit}
+h2{position:relative;margin:0 0 22px;padding-top:14px;border-top:1px solid var(--line);font-size:32px;line-height:1.5;font-weight:700;text-wrap:balance}
+h2::before{content:counter(unit,arabic-indic);display:block;font-size:20px;line-height:1.5;color:var(--alert)}
+.unit:first-of-type h2{border-top:0;padding-top:0}
+h3{margin:30px 0 10px;font-size:26px;line-height:1.55;font-weight:700;color:var(--accent)}
+
+/* Quotations keep the source's voice, visibly apart from the explanation. */
+blockquote{margin:26px 0;padding-inline-start:24px;border-inline-start:4px solid var(--accent);font-family:var(--naskh);font-size:26px;line-height:1.95}
+blockquote p{margin:0 0 .4em}
+blockquote cite{display:block;font:400 18px/1.7 var(--sans);color:var(--muted)}
+blockquote cite::before{content:"— "}
+
+/* Boxes: one stable meaning each, quiet enough that prose stays the reading line. */
+.box{margin:26px 0;padding:14px 20px 4px;border-inline-start:4px solid var(--accent);background:var(--accent-soft);border-radius:0 6px 6px 0}
+.box-label{margin:0 0 4px;font-size:18px;line-height:1.6;font-weight:700;color:var(--accent)}
+.box p{font-size:23px;line-height:1.75}
+.box-limit{border-color:var(--alert);background:var(--alert-soft)}.box-limit .box-label{color:var(--alert)}
+.box-added{border-color:var(--gold);background:var(--gold-soft)}.box-added .box-label{color:var(--gold)}
+.box-example{border-color:var(--ink);background:var(--quiet)}.box-example .box-label{color:var(--ink)}
+
+/* Comparison: the same question answered side by side. */
+.compare{display:grid;grid-template-columns:repeat(var(--n,2),minmax(0,1fr));margin:28px 0;border-block:3px solid var(--ink)}
+.compare[data-sides="3"]{--n:3}
+.compare>section{padding:16px 20px 6px}
+.compare>section+section{border-inline-start:1px solid var(--line)}
+.compare>section:nth-child(2){background:var(--quiet)}
+.side{margin:0 0 8px;font-size:24px;line-height:1.5;font-weight:700;color:var(--accent)}
+.compare>section:nth-child(2) .side{color:var(--alert)}
+.compare p,.compare li{font-size:21px;line-height:1.7}
+
+/* Steps: only a real order or cause; RTL starts on the right, narrow screens go downward. */
+.steps{list-style:none;display:flex;gap:24px;margin:28px 0;padding:0;counter-reset:step}
+.steps li{flex:1;min-width:0;position:relative;margin:0;padding:14px 16px 12px;background:var(--accent-soft);border-top:4px solid var(--accent);counter-increment:step;font-size:21px;line-height:1.65}
+.steps li::before{content:counter(step,arabic-indic);display:block;font-size:18px;font-weight:700;color:var(--accent)}
+.steps li>strong{display:block;font-size:22px;line-height:1.5;margin-bottom:4px}
+.steps li:not(:last-child)::after{content:"←";position:absolute;inset-inline-end:-24px;top:50%;translate:0 -50%;width:24px;text-align:center;font-size:22px;line-height:1;font-weight:700;color:var(--alert)}
+.steps[data-kind=proposed] li{border-top-style:dashed;background:var(--quiet)}
+.legend{margin-top:-14px;font-size:18px;color:var(--muted)}
+
+/* Tables: criteria across, cases down; scroll sideways rather than shrink. */
+.table{margin:28px 0;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:21px;line-height:1.65}
+caption{text-align:start;margin-bottom:8px;font-size:20px;font-weight:700}
+th,td{padding:10px 14px;text-align:start;vertical-align:top;border-bottom:1px solid var(--line)}
+thead th{font-size:18px;color:var(--accent);background:var(--accent-soft);border-block:2px solid var(--ink)}
+tbody th{font-size:20px;font-weight:700}
+.num{text-align:end;font-variant-numeric:tabular-nums;direction:ltr}
+
+/* Numbers: the source's own figures, value first. */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin:28px 0;border-block:3px solid var(--ink)}
+.stats>div{padding:14px 16px;text-align:center}
+.stats>div+div{border-inline-start:1px solid var(--line)}
+.stats strong{display:block;font-size:44px;line-height:1.2;color:var(--accent);font-variant-numeric:tabular-nums}
+.stats span{display:block;font-size:20px;line-height:1.55;color:var(--muted)}
+
+/* Bars: shared zero baseline, printed value, stated scale. */
+.bars{margin:28px 0}
+.bars ol{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.bars li{display:grid;grid-template-columns:minmax(0,13em) 1fr 4.2em;gap:14px;align-items:center;margin:0;font-size:20px;line-height:1.5}
+.bar-label{display:block}
+.bar-note{display:block;font-size:17px;color:var(--muted)}
+.track{height:22px;background:var(--quiet);border-inline-start:2px solid var(--ink)}
+.track i{display:block;height:100%;width:calc(var(--v)*1%);background:var(--accent)}
+.bars b{text-align:end;font-variant-numeric:tabular-nums}
+figcaption{margin-top:10px;font-size:18px;line-height:1.7;color:var(--muted)}
+
+/* Terms and chronology. */
+.terms{margin:26px 0;display:grid;grid-template-columns:minmax(0,11em) 1fr;border-top:2px solid var(--ink)}
+.terms dt,.terms dd{margin:0;padding:10px 0;border-bottom:1px solid var(--line);font-size:21px;line-height:1.65}
+.terms dt{font-weight:700;color:var(--accent);padding-inline-end:16px}
+.timeline{list-style:none;margin:26px 0;padding:0;border-inline-start:3px solid var(--ink)}
+.timeline li{position:relative;margin:0;padding:0 0 18px;padding-inline-start:26px}
+.timeline li::before{content:"";position:absolute;inset-inline-start:-11px;top:12px;width:19px;height:19px;border-radius:50%;background:var(--paper);border:4px solid var(--alert)}
+.when{display:block;font-size:18px;font-weight:700;color:var(--alert)}
+
+.colophon{margin-top:56px;padding-top:16px;border-top:2px solid var(--ink)}
+.colophon p{font-size:18px;line-height:1.75;color:var(--muted)}
+
+@media (max-width:640px){
+  body{font-size:21px}.wrap{padding:28px 18px 56px}
+  h1{font-size:34px}h2{font-size:27px}h3{font-size:23px}.thesis p{font-size:23px}.thesis p+p{font-size:21px}blockquote{font-size:23px}
+  .compare{grid-template-columns:1fr}.compare>section+section{border-inline-start:0;border-top:1px solid var(--line)}
+  .steps{flex-direction:column;gap:28px}.steps li:not(:last-child)::after{content:"↓";inset-inline-end:auto;inset-inline-start:50%;top:auto;bottom:-28px;translate:-50% 0}
+  .stats>div+div{border-inline-start:0;border-top:1px solid var(--line)}
+  .bars li{grid-template-columns:1fr 3.6em;grid-template-areas:"label value" "track track";gap:4px 10px}
+  .bar-label{grid-area:label}.bars b{grid-area:value}.track{grid-area:track}
+  .terms{grid-template-columns:1fr}.terms dt{border-bottom:0;padding-bottom:0}
+}
+@media print{body{font-size:15pt}.wrap{max-width:none;padding:0}.unit{break-inside:auto}h2,h3{break-after:avoid}.compare,.steps,.box,figure,blockquote{break-inside:avoid}}

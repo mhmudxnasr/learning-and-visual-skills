@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare, render, validate, publish, and optionally close one Lite Visual job."""
+"""Prepare, seal, publish, and optionally close one HTML-only Lite Visual job."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import re
 import sys
 import threading
 import urllib.error
@@ -18,27 +19,12 @@ from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from pair_integrity import INTEGRITY_SCHEMA, finish_pair, prepare_provenance, receipt_valid as receipt_attestation_valid
+from seal import INTEGRITY_SCHEMA, current_receipt, prepare_provenance, seal
 from process_runtime import ProcessFailure, execute
 DEFAULT_WORKER = "https://recommendations-worker.mhmudnasr30.workers.dev"
+# The API keeps the v4 stage names; HTML-only evidence declares companion_format.
 STAGES = ["resolve_source", "extract_source", "map_coverage", "author_html", "render_pdf", "validate_pair", "publish_pair", "verify_record"]
-EXPECTED_HASH_FILES = {
-    "work_item_sha256": "work-item.json",
-    "source_extraction_sha256": "source-extraction.json",
-    "source_sha256": "source.txt",
-    "source_scope_sha256": "source-scope.json",
-    "coverage_ledger_sha256": "coverage-ledger.json",
-    "html_sha256": "companion.html",
-    "pdf_sha256": "companion.pdf",
-    "validation_receipt_sha256": "validation-receipt.json",
-}
-EXPECTED_PROVENANCE_KEYS = {
-    "transcript_file_sha256",
-    "transcript_receipt_sha256",
-    "repetition_review_sha256",
-}
-
-
+HTML_ONLY = {"companion_format": "html"}
 class WorkflowError(RuntimeError):
     pass
 
@@ -71,44 +57,8 @@ def validate_job_target(job: dict[str, Any], args: argparse.Namespace) -> None:
         raise WorkflowError("claimed job chapter identity does not match --chapter-key")
 
 
-def verify_expected_hashes(work: Path, serialized: str | None) -> None:
-    if not serialized:
-        return
-    try:
-        expected = json.loads(serialized)
-    except json.JSONDecodeError as exc:
-        raise WorkflowError(f"--expected-hashes-json is invalid: {exc}") from exc
-    if not isinstance(expected, dict) or set(expected) != set(EXPECTED_HASH_FILES):
-        raise WorkflowError("--expected-hashes-json must contain every audited workflow hash")
-    for key, filename in EXPECTED_HASH_FILES.items():
-        path = work / filename
-        if not path.is_file() or digest(path) != expected[key]:
-            raise WorkflowError(f"current workflow file no longer matches aggregate audit: {filename}")
-
-
-def verify_expected_provenance(serialized: str | None) -> None:
-    if not serialized:
-        return
-    try:
-        expected = json.loads(serialized)
-    except json.JSONDecodeError as exc:
-        raise WorkflowError(f"--expected-provenance-json is invalid: {exc}") from exc
-    if not isinstance(expected, dict) or set(expected) != EXPECTED_PROVENANCE_KEYS:
-        raise WorkflowError("--expected-provenance-json must contain every audited external provenance hash")
-    for key, value in expected.items():
-        if not isinstance(value, dict) or set(value) != {"path", "sha256"}:
-            raise WorkflowError(f"invalid audited provenance entry: {key}")
-        path = Path(str(value["path"]))
-        expected_hash = str(value["sha256"])
-        if expected_hash:
-            if not path.is_file() or digest(path) != expected_hash:
-                raise WorkflowError(f"external provenance no longer matches aggregate audit: {path}")
-        elif path.exists():
-            raise WorkflowError(f"unexpected external provenance appeared after aggregate audit: {path}")
-
-
 def run(command: list[str], label: str) -> str:
-    budgets = {"source extraction": 7200, "source-scope build": 60, "complete source edition embedding": 60, "canonical PDF render": 180, "deterministic validation": 600, "atomic pair publication": 600}
+    budgets = {"source extraction": 7200, "atomic companion publication": 600}
     try:
         return execute(command, label, timeout=budgets.get(label, 180)).strip()
     except ProcessFailure as exc:
@@ -126,29 +76,6 @@ def workspace_lock(work: Path):
             yield
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-
-
-def current_validation_receipt(work_item: Path, manifest: Path, source: Path, scope: Path, ledger: Path, html: Path, pdf: Path, receipt: Path) -> dict[str, Any] | None:
-    if any(not path.is_file() for path in (work_item, manifest, source, scope, ledger, html)):
-        return None
-    if not pdf.is_file() or not receipt.is_file() or not pdf.stat().st_size or not receipt.stat().st_size:
-        return None
-    try:
-        data = json.loads(receipt.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    expected = {
-        "work_item_sha256": digest(work_item),
-        "source_extraction_sha256": digest(manifest),
-        "source_sha256": digest(source),
-        "source_scope_sha256": digest(scope),
-        "coverage_ledger_sha256": digest(ledger),
-        "html_sha256": digest(html),
-        "pdf_sha256": digest(pdf),
-    }
-    if not receipt_attestation_valid(data, expected):
-        return None
-    return data
 
 
 def api(worker: str, path: str, method: str = "GET", body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -192,60 +119,6 @@ def checkpoint(worker_url: str, job_id: str, identity: str, step: str, evidence:
     api(worker_url, f"/agent/jobs/{job_id}/checkpoint", "POST", {"worker": identity, "step": step, "evidence": evidence})
 
 
-def exact_job(args: argparse.Namespace, workflow_run_id: str) -> dict[str, Any]:
-    payload = api(args.worker, f"/agent/jobs/{args.job_id}")
-    job = payload.get("job") or {}
-    validate_job_target(job, args)
-    if job.get("workflow_run_id") != workflow_run_id:
-        raise WorkflowError("canonical job workflow run does not match the claimed staged job")
-    return job
-
-
-def ensure_staged_job_released(args: argparse.Namespace, upload: dict[str, Any], workflow_run_id: str, receipt_sha256: str) -> dict[str, Any]:
-    final_evidence = {key: upload[key] for key in ("pair_id", "html_artifact_id", "pdf_artifact_id")}
-    completion = {
-        "worker": args.worker_identity,
-        **final_evidence,
-        "receipt_sha256": receipt_sha256,
-        "validation_status": "passed",
-    }
-    completion_error: WorkflowError | None = None
-    try:
-        api(args.worker, f"/agent/jobs/{args.job_id}/complete", "POST", completion)
-    except WorkflowError as exc:
-        completion_error = exc
-    try:
-        job = exact_job(args, workflow_run_id)
-    except WorkflowError as exc:
-        if completion_error:
-            raise WorkflowError(f"staged job completion was ambiguous ({completion_error}); canonical readback failed: {exc}") from exc
-        raise
-    if job.get("status") == "running" and completion_error:
-        try:
-            api(args.worker, f"/agent/jobs/{args.job_id}/complete", "POST", completion)
-            completion_error = None
-        except WorkflowError as exc:
-            completion_error = exc
-        try:
-            job = exact_job(args, workflow_run_id)
-        except WorkflowError as exc:
-            raise WorkflowError(f"staged job completion retry was ambiguous ({completion_error}); canonical readback failed: {exc}") from exc
-    result = job.get("result") or {}
-    expected = {
-        **final_evidence,
-        "receipt_sha256": receipt_sha256,
-        "validation_status": "passed",
-        "corpus_id": args.corpus_id,
-        "workflow_run_id": workflow_run_id,
-    }
-    if job.get("status") not in {"awaiting_activation", "completed"} or any(result.get(key) != value for key, value in expected.items()):
-        detail = f"canonical staged job did not reach an exact releasable state ({job.get('status')})"
-        if completion_error:
-            detail = f"staged job completion was ambiguous ({completion_error}); {detail}"
-        raise WorkflowError(detail)
-    return job
-
-
 def prepare(args: argparse.Namespace) -> int:
     work = args.workdir.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -273,7 +146,7 @@ def _prepare_locked(args: argparse.Namespace, work: Path) -> int:
     else:
         run([sys.executable, str(ROOT / "extract_source.py"), args.source, "--kind", args.kind, "--output", str(source), "--manifest", str(manifest)], "source extraction")
     prepare_provenance(work)
-    print(json.dumps({"ok": True, "workdir": str(work), "source": str(source), "manifest": str(manifest), "next": "read the complete source, author companion.html, then run finish or publish; no manual scope ledger or review forms"}, ensure_ascii=False))
+    print(json.dumps({"ok": True, "workdir": str(work), "source": str(source), "manifest": str(manifest), "next": "read the complete source.txt, write companion.md (references/format.md), run build_companion.py, then publish (or finish for a draft)"}, ensure_ascii=False))
     return 0
 
 
@@ -294,10 +167,8 @@ def finish(args: argparse.Namespace) -> int:
     work = args.workdir.resolve()
     with workspace_lock(work):
         ensure_target(work, args)
-        receipt = current_validation_receipt(*[work / name for name in ("work-item.json", "source-extraction.json", "source.txt", "source-scope.json", "coverage-ledger.json", "companion.html", "companion.pdf", "validation-receipt.json")])
-        if receipt is None:
-            receipt = finish_pair(work, run)
-        print(json.dumps({"ok": True, "html": str(work / "companion.html"), "pdf": str(work / "companion.pdf"), "receipt": str(work / "validation-receipt.json"), "verification_scope": receipt.get("verification_scope", "full-validation"), "quality_checks": receipt.get("quality_checks", "passed")}, ensure_ascii=False))
+        receipt = current_receipt(work) or seal(work)
+        print(json.dumps({"ok": True, "html": str(work / "companion.html"), "receipt": str(work / "validation-receipt.json"), "verification_scope": receipt["verification_scope"], "quality_checks": receipt["quality_checks"]}, ensure_ascii=False))
     return 0
 
 
@@ -309,31 +180,24 @@ def publish(args: argparse.Namespace) -> int:
 
 def _publish_locked(args: argparse.Namespace, work: Path) -> int:
     work_item, source, manifest, scope = work / "work-item.json", work / "source.txt", work / "source-extraction.json", work / "source-scope.json"
-    ledger, html, pdf, receipt = work / "coverage-ledger.json", work / "companion.html", work / "companion.pdf", work / "validation-receipt.json"
+    ledger, html, receipt = work / "coverage-ledger.json", work / "companion.html", work / "validation-receipt.json"
     ensure_target(work, args)
     for path in (work_item, source, manifest, html):
         if not path.is_file() or not path.stat().st_size:
             raise WorkflowError(f"required workflow input is missing: {path}")
-    verify_expected_hashes(work, args.expected_hashes_json)
-    verify_expected_provenance(args.expected_provenance_json)
-    receipt_data = current_validation_receipt(work_item, manifest, source, scope, ledger, html, pdf, receipt)
-    if receipt_data is None:
-        receipt_data = finish_pair(work, run)
-    if receipt_data["schema_version"] == INTEGRITY_SCHEMA:
-        try:
-            contract = api(args.worker, "/artifacts/pair-contract")
-        except WorkflowError as exc:
-            raise WorkflowError("receiving Worker does not advertise the direct pair contract; deploy the matching Worker update before publication; finished local HTML/PDF are preserved") from exc
-        if INTEGRITY_SCHEMA not in contract.get("receipt_schemas", []):
-            raise WorkflowError("receiving Worker does not support lite-visual-integrity/v1; finished local HTML/PDF are preserved")
+    receipt_data = current_receipt(work) or seal(work)
+    try:
+        contract = api(args.worker, "/artifacts/pair-contract")
+    except WorkflowError as exc:
+        raise WorkflowError("receiving Worker does not advertise the direct pair contract; deploy the matching Worker update before publication; finished local HTML is preserved") from exc
+    if INTEGRITY_SCHEMA not in contract.get("receipt_schemas", []):
+        raise WorkflowError(f"receiving Worker does not support {INTEGRITY_SCHEMA}; finished local HTML is preserved")
     extraction = json.loads(manifest.read_text(encoding="utf-8"))
     scope_data = json.loads(scope.read_text(encoding="utf-8"))
     ledger_data = json.loads(ledger.read_text(encoding="utf-8"))
     job: dict[str, Any] | None = None
     heartbeat: Heartbeat | None = None
-    pair_published = False
-    staged_job_released = False
-    upload: dict[str, Any] | None = None
+    published = False
     try:
         if args.job_id:
             claimed = api(args.worker, f"/agent/jobs/{args.job_id}/claim", "POST", {"worker": args.worker_identity})
@@ -354,47 +218,42 @@ def _publish_locked(args: argparse.Namespace, work: Path) -> int:
         evidence = {
             "extract_source": {"source_identity": args.source_url, "source_kind": scope_data.get("source", {}).get("kind") or "article"},
             "map_coverage": {key: extraction.get(key) for key in ("schema_version", "status", "method", "content_sha256", "cache_key", "word_count")},
-            "author_html": {"source_sha256": digest(source), "source_scope_sha256": digest(scope), "word_count": scope_data["source"]["word_count"], "span_count": len(scope_data["spans"]), **({"authoring_mode": "direct"} if receipt_data["schema_version"] == INTEGRITY_SCHEMA else {})},
+            "author_html": {"source_sha256": digest(source), "source_scope_sha256": digest(scope), "word_count": scope_data["source"]["word_count"], "span_count": len(scope_data["spans"]), "authoring_mode": "direct"},
         }
         evidence["map_coverage"]["manifest_path"] = str(manifest)
         if args.job_id:
             for step in ("extract_source", "map_coverage", "author_html"):
                 advance(step, evidence[step])
-        render_evidence = {"html_sha256": digest(html), "coverage_ledger_sha256": digest(ledger), "claim_count": len(ledger_data.get("claims") or []), "canonical_selector": "article[data-canonical-content=true]", **({"authoring_mode": "direct"} if receipt_data["schema_version"] == INTEGRITY_SCHEMA else {})}
+        render_evidence = {"html_sha256": digest(html), "coverage_ledger_sha256": digest(ledger), "claim_count": len(ledger_data.get("claims") or []), "canonical_selector": "article[data-canonical-content=true]", "authoring_mode": "direct", **HTML_ONLY}
         advance("render_pdf", render_evidence)
-        advance("validate_pair", {"html_sha256": digest(html), "pdf_sha256": digest(pdf)})
-        advance("publish_pair", {"validation_schema": receipt_data["schema_version"], "validation_status": receipt_data["status"], "receipt_sha256": digest(receipt)})
-        verify_expected_hashes(work, args.expected_hashes_json)
-        verify_expected_provenance(args.expected_provenance_json)
-        command = [sys.executable, str(ROOT / "upload_pair.py"), "--html", str(html), "--pdf", str(pdf), "--receipt", str(receipt), "--recommendation-id", args.recommendation_id, "--source-url", args.source_url, "--source-title", args.source_title, "--worker", args.worker]
-        if args.corpus_id:
-            if not args.job_id:
-                raise WorkflowError("--corpus-id requires --job-id")
-            workflow_run_id = str((job or {}).get("workflow_run_id") or "")
-            if not workflow_run_id:
-                raise WorkflowError("claimed staged job has no workflow_run_id")
-            command.extend(["--corpus-id", args.corpus_id, "--job-id", args.job_id, "--workflow-run-id", workflow_run_id, "--worker-identity", args.worker_identity])
+        advance("validate_pair", {"html_sha256": digest(html), **HTML_ONLY})
+        advance("publish_pair", {"validation_schema": receipt_data["schema_version"], "validation_status": receipt_data["status"], "receipt_sha256": digest(receipt), **HTML_ONLY})
+        upload_html = html
+        if args.upload_basename:
+            base = args.upload_basename
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", base):
+                raise WorkflowError("--upload-basename must be a lowercase ASCII hyphen slug")
+            named = work / "upload"
+            named.mkdir(exist_ok=True)
+            upload_html = named / f"{base}.html"
+            upload_html.unlink(missing_ok=True)
+            upload_html.write_bytes(html.read_bytes())
+        command = [sys.executable, str(ROOT / "upload_pair.py"), "--html", str(upload_html), "--receipt", str(receipt), "--recommendation-id", args.recommendation_id, "--source-url", args.source_url, "--source-title", args.source_title, "--worker", args.worker]
         for option, value in (("--pair-id", args.pair_id), ("--revision", args.revision), ("--supersedes-pair-id", args.supersedes_pair_id), ("--chapter-key", getattr(args, "chapter_key", None)), ("--chapter-title", getattr(args, "chapter_title", None)), ("--chapter-number", getattr(args, "chapter_number", None))):
             if value:
                 command.extend([option, str(value)])
-        upload = json.loads(run(command, "atomic pair publication").splitlines()[-1])
-        if not upload.get("ok"):
-            raise WorkflowError(f"atomic pair publication failed: {upload}")
-        pair_published = True
+        upload = json.loads(run(command, "atomic companion publication").splitlines()[-1])
+        if not upload.get("ok") or upload.get("status") != "ready":
+            raise WorkflowError(f"atomic companion publication failed: {upload}")
+        published = True
         if args.job_id:
-            final_evidence = {key: upload[key] for key in ("pair_id", "html_artifact_id", "pdf_artifact_id")}
-            if upload.get("status") == "ready":
-                advance("verify_record", final_evidence)
-                api(args.worker, f"/agent/jobs/{args.job_id}/complete", "POST", {"worker": args.worker_identity, **final_evidence, "validation_status": "passed"})
-            elif upload.get("status") == "staged":
-                workflow_run_id = str((job or {}).get("workflow_run_id") or "")
-                ensure_staged_job_released(args, upload, workflow_run_id, digest(receipt))
-                staged_job_released = True
+            final_evidence = {"pair_id": upload["pair_id"], "html_artifact_id": upload["html_artifact_id"], **HTML_ONLY}
+            advance("verify_record", final_evidence)
+            api(args.worker, f"/agent/jobs/{args.job_id}/complete", "POST", {"worker": args.worker_identity, **final_evidence, "validation_status": "passed"})
         print(json.dumps({"ok": True, "validation": receipt_data, "publication": upload, "job_id": args.job_id}, ensure_ascii=False))
         return 0
     except Exception as exc:
-        should_fail_job = not pair_published or bool(upload and upload.get("status") == "staged" and not staged_job_released)
-        if args.job_id and job and should_fail_job:
+        if args.job_id and job and not published:
             try:
                 api(args.worker, f"/agent/jobs/{args.job_id}/fail", "POST", {"worker": args.worker_identity, "error": str(exc)[:1800]})
             except Exception:
@@ -419,20 +278,18 @@ def parse_args() -> argparse.Namespace:
     pub.add_argument("--recommendation-id", required=True)
     pub.add_argument("--source-url", required=True)
     pub.add_argument("--source-title", required=True)
+    pub.add_argument("--upload-basename", help="Source-specific lowercase slug for the uploaded HTML filename; bytes and receipt are unchanged.")
     pub.add_argument("--pair-id")
     pub.add_argument("--revision")
     pub.add_argument("--supersedes-pair-id")
     pub.add_argument("--chapter-key")
     pub.add_argument("--chapter-title")
     pub.add_argument("--chapter-number", type=int)
-    pub.add_argument("--corpus-id")
     pub.add_argument("--job-id")
     pub.add_argument("--worker-identity", default="hermes-lite-visual-runner-v1")
     pub.add_argument("--worker", default=DEFAULT_WORKER)
-    pub.add_argument("--expected-hashes-json")
-    pub.add_argument("--expected-provenance-json")
     pub.set_defaults(handler=publish)
-    local = sub.add_parser("finish", help="render and seal local HTML/PDF without network publication or quality audits")
+    local = sub.add_parser("finish", help="seal local HTML without network publication")
     local.add_argument("--workdir", required=True, type=Path)
     local.add_argument("--recommendation-id", required=True)
     local.add_argument("--source-url", required=True)
